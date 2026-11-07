@@ -48,13 +48,8 @@ TUNNEL_TOKEN = token_from_env or ""
 
 
 def kill_stale_cloudflared():
-    try:
-        if sys.platform == "win32":
-            subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            subprocess.run(["pkill", "-9", "-f", "cloudflared"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+    # Do not kill cloudflared to avoid disturbing other services
+    pass
 
 
 def is_port_in_use(check_port: int) -> bool:
