@@ -1,5 +1,9 @@
 import os
 import sys
+
+# Ensure pure-Python mode for SQLAlchemy to avoid Windows AppControl policy blocking cython DLLs
+os.environ["DISABLE_SQLALCHEMY_CEXT"] = "1"
+
 import uvicorn
 from app.config import settings
 from app.database import engine, Base
@@ -33,10 +37,21 @@ def main():
     print("-" * 80)
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8080))
-    print(f"Starting Web Application Server at: http://{host}:{port}")
+    print(f"Starting Web Application Server at: http://{host}:{port} (Dual-Stack IPv4/IPv6 supported)")
     print("=" * 80)
     
-    uvicorn.run("app.main:app", host=host, port=port, reload=False)
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        sock.bind(('::', port))
+        sock.listen(256)
+        config = uvicorn.Config("app.main:app", reload=False, access_log=True)
+        server = uvicorn.Server(config)
+        server.run(sockets=[sock])
+    except Exception as exc:
+        print(f"[!] Dual-stack bind fallback: {exc}")
+        uvicorn.run("app.main:app", host=host, port=port, reload=False)
 
 if __name__ == "__main__":
     main()
