@@ -1126,7 +1126,7 @@ def stage3_map_working_station(
     w_mandal_name = None
     if payload.is_working_in_salary_gp:
         w_gp_name = sm.panchayat.gp_name if sm.panchayat else None
-        w_mandal_name = sm.mandal.mandal_name if sm.mandal else None
+        w_mandal_name = sm.panchayat.mandal_name if sm.panchayat else (sm.mandal.mandal_name if sm.mandal else None)
     elif posting_type in ["WITHIN_MANDAL", "ANOTHER_MANDAL"]:
         dest_gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == act_gp).first()
         w_gp_name = dest_gp.gp_name if dest_gp else str(act_gp)

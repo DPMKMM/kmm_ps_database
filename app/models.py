@@ -118,6 +118,7 @@ class EmployeeSalaryMapping(Base):
     
     employee = relationship("Employee", back_populates="salary_mappings")
     panchayat = relationship("GramPanchayat", foreign_keys=[salary_gp_lgd], primaryjoin="EmployeeSalaryMapping.salary_gp_lgd == GramPanchayat.lgd_code")
+    mandal = relationship("Mandal", foreign_keys=[salary_mandal_id])
 
 class EmployeePosting(Base):
     __tablename__ = "employee_postings"

@@ -364,7 +364,13 @@ async function fetchAPI(endpoint, options = {}) {
   }
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    const rawText = await res.text().catch(() => "");
+    let errorData;
+    try {
+      errorData = JSON.parse(rawText);
+    } catch {
+      errorData = { detail: rawText || res.statusText || `HTTP Error ${res.status}` };
+    }
     throw errorData;
   }
 
