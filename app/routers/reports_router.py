@@ -20,7 +20,32 @@ from app.auth import get_current_user
 
 router = APIRouter(prefix="/api/reports", tags=["Reports Generation Module (A-Z)"])
 
+KEY_REPORT_CODES = ("CLEAR_VACANCY", "DEPUTED_PS", "LEAVE", "SUSPENSION")
+
+LEAVE_STATUS_LABELS = {
+    "LONG_LEAVE": "Long Leave",
+    "MEDICAL_LEAVE": "Medical Leave",
+    "MATERNITY_LEAVE": "Maternity Leave",
+    "CHILD_CARE_LEAVE": "Child Care Leave (CCL)",
+    "EARNED_LEAVE": "Earned Leave",
+    "EXTRAORDINARY_LEAVE": "Extraordinary Leave (EOL)",
+    "OTHER_APPROVED_LEAVE": "Other Approved Leave",
+    "OTHER": "Other Leave",
+}
+
+POSTING_TYPE_LABELS = {
+    "OWN_GP": "Regular (Own Salary GP)",
+    "WITHIN_MANDAL": "Within Same Mandal",
+    "ANOTHER_MANDAL": "Another Mandal",
+    "OTHER_DISTRICT": "Other District",
+    "OTHER_DEPARTMENT": "Other Department",
+}
+
 REPORT_DEFINITIONS = {
+    "CLEAR_VACANCY": "Clear Vacancy Report (Vacant GPs - Category A)",
+    "DEPUTED_PS": "Deputed Panchayat Secretaries Report",
+    "LEAVE": "Leave Report (All Approved & Unapproved Leaves)",
+    "SUSPENSION": "Suspension Report (Suspended Panchayat Secretaries)",
     "A": "District Employee Master Report",
     "B": "Mandal-wise Panchayat Secretary Status Report",
     "C": "GP-wise Employee Position Report",
@@ -51,7 +76,14 @@ REPORT_DEFINITIONS = {
 
 @router.get("/list")
 def list_available_reports():
-    return [{"code": k, "name": v} for k, v in REPORT_DEFINITIONS.items()]
+    return [
+        {
+            "code": k,
+            "name": v,
+            "category": "KEY" if k in KEY_REPORT_CODES else "STANDARD"
+        }
+        for k, v in REPORT_DEFINITIONS.items()
+    ]
 
 @router.get("/data/{report_code}")
 def get_report_data(
@@ -117,7 +149,7 @@ def export_report(
         # Excel format using openpyxl
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = f"Report_{code}"
+        ws.title = f"Report_{code}"[:31]
         
         # Government Header styling
         navy_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
@@ -201,6 +233,197 @@ def export_report(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+def _fmt_date(d) -> str:
+    """Format a date/datetime consistently or return N/A."""
+    return d.strftime("%Y-%m-%d") if d else "N/A"
+
+
+def _resolve_working_location(p, gp) -> str:
+    """Resolve current physical working location label for an employee posting."""
+    if not p:
+        return f"{gp.gp_name} ({gp.mandal_name})" if gp else "N/A"
+    if p.posting_type == "OTHER_DISTRICT":
+        return f"{p.external_gp_or_office_name or 'External Office'} ({p.external_district_name or 'Other Dist'})"
+    if p.posting_type == "OTHER_DEPARTMENT":
+        return f"{p.external_department_name or 'Other Dept'} ({p.external_gp_or_office_name or 'Office'})"
+    if p.has_internal_reassignment and p.reassigned_panchayat:
+        return f"{p.reassigned_panchayat.gp_name} ({p.reassigned_panchayat.mandal_name})"
+    if p.working_panchayat:
+        return f"{p.working_panchayat.gp_name} ({p.working_panchayat.mandal_name})"
+    return f"{gp.gp_name} ({gp.mandal_name})" if gp else "N/A"
+
+
+def _resolve_official_deputation(p):
+    """Return (gp_or_office, mandal_or_dept) for an employee's official deputation destination."""
+    if not p or p.is_working_in_salary_gp:
+        return "N/A (Working in Salary GP)", "N/A"
+    if p.posting_type == "OTHER_DISTRICT":
+        return p.external_gp_or_office_name or "Other District Office", p.external_district_name or "Other District"
+    if p.posting_type == "OTHER_DEPARTMENT":
+        return p.external_gp_or_office_name or p.external_department_name or "Department Office", p.external_department_name or "Other Department"
+    target_gp = p.official_deputation_panchayat or p.working_panchayat
+    if target_gp:
+        return target_gp.gp_name, target_gp.mandal_name
+    return "Deputed (GP Not Confirmed)", "N/A"
+
+
+def _build_clear_vacancy_report(db: Session, target_mandal_id: Optional[int]):
+    """Build Clear Vacancy (Category A: no salary claimant and no working PS) headers and rows."""
+    headers = [
+        "S.No", "Mandal Name", "Gram Panchayat Name", "GP LGD Code",
+        "Salary Strength", "Deputation In", "Deputation Out",
+        "Actual Working Strength", "Available Working Strength",
+        "Position Status", "Mandal Confirmation", "Verification Status", "Remarks"
+    ]
+    sal_counts = dict(
+        db.query(EmployeeSalaryMapping.salary_gp_lgd, func.count(EmployeeSalaryMapping.id))
+        .filter(EmployeeSalaryMapping.is_active == True)
+        .group_by(EmployeeSalaryMapping.salary_gp_lgd)
+        .all()
+    )
+    work_counts = dict(
+        db.query(EmployeePosting.actual_working_gp_lgd, func.count(EmployeePosting.id))
+        .filter(EmployeePosting.is_current == True, EmployeePosting.actual_working_gp_lgd.isnot(None))
+        .group_by(EmployeePosting.actual_working_gp_lgd)
+        .all()
+    )
+    gps = db.query(GramPanchayat)
+    if target_mandal_id:
+        gps = gps.filter(GramPanchayat.mandal_id == target_mandal_id)
+    gps = gps.order_by(GramPanchayat.mandal_name.asc(), GramPanchayat.gp_name.asc()).all()
+
+    rows = []
+    idx = 1
+    for gp in gps:
+        if sal_counts.get(gp.lgd_code, 0) == 0 and work_counts.get(gp.lgd_code, 0) == 0:
+            rows.append([
+                idx,
+                gp.mandal_name,
+                gp.gp_name,
+                gp.lgd_code,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "CATEGORY A: CLEAR VACANCY",
+                "CONFIRMED CLEAR VACANT",
+                "VERIFIED NO SECRETARY ON DUTY",
+                gp.vacancy_remarks or "Sanctioned GP post with no employee claiming salary or working on deputation",
+            ])
+            idx += 1
+    return headers, rows
+
+
+def _build_deputed_ps_report(records):
+    """Build unified report covering all deputed Panchayat Secretaries across all deputation types."""
+    headers = [
+        "S.No", "Employee ID", "Employee Name", "Mobile Number",
+        "Salary Mandal", "Salary GP", "Salary GP LGD",
+        "Deputation Type", "Official Deputation Mandal / Dept", "Official Deputation GP / Office",
+        "Presently Working Location", "Deputation Order No", "Order Date",
+        "Effective From", "Service Status", "Verification Status", "Remarks"
+    ]
+    rows = []
+    idx = 1
+    for emp, sm, p, st, gp in records:
+        if not (p and not p.is_working_in_salary_gp):
+            continue
+        off_gp, off_mandal = _resolve_official_deputation(p)
+        dep_type_label = POSTING_TYPE_LABELS.get(p.posting_type, p.posting_type or "Deputed")
+        if p.has_internal_reassignment:
+            dep_type_label += " (Internally Reassigned)"
+        rows.append([
+            idx,
+            emp.employee_id,
+            emp.name_ifmis,
+            emp.mobile_number or "N/A",
+            gp.mandal_name,
+            gp.gp_name,
+            sm.salary_gp_lgd,
+            dep_type_label,
+            off_mandal,
+            off_gp,
+            _resolve_working_location(p, gp),
+            p.deputation_order_no or "N/A",
+            _fmt_date(p.deputation_order_date),
+            _fmt_date(p.effective_from),
+            st.service_status if st else "WORKING",
+            p.verification_status or "PENDING",
+            p.remarks or "N/A",
+        ])
+        idx += 1
+    return headers, rows
+
+
+def _build_suspension_report(records):
+    """Build report for all Suspended Panchayat Secretaries."""
+    headers = [
+        "S.No", "Employee ID", "Employee Name", "Mobile Number",
+        "Salary GP", "Salary Mandal", "Working Arrangement",
+        "Suspension Order No", "Suspension / Effective Date",
+        "Revocation Order No", "Expected Joining Date", "Remarks"
+    ]
+    rows = []
+    idx = 1
+    for emp, sm, p, st, gp in records:
+        if not (st and st.service_status == "SUSPENDED"):
+            continue
+        order_no = st.suspension_order_no or st.proceedings_order_no or "N/A"
+        susp_date = _fmt_date(st.suspension_effective_date or st.status_effective_from or st.suspension_order_date or st.proceedings_order_date)
+        rows.append([
+            idx,
+            emp.employee_id,
+            emp.name_ifmis,
+            emp.mobile_number or "N/A",
+            gp.gp_name,
+            gp.mandal_name,
+            _resolve_working_location(p, gp),
+            order_no,
+            susp_date,
+            st.revocation_order_no or "N/A",
+            _fmt_date(st.expected_joining_date),
+            st.reason_remarks or "N/A",
+        ])
+        idx += 1
+    return headers, rows
+
+
+def _build_leave_report(records, allowed_statuses=None):
+    """Build report for Panchayat Secretaries on any Leave status (or specific subtype)."""
+    target_statuses = allowed_statuses if allowed_statuses is not None else set(LEAVE_STATUS_LABELS.keys())
+    headers = [
+        "S.No", "Employee ID", "Employee Name", "Mobile Number",
+        "Salary GP", "Salary Mandal", "Working Arrangement",
+        "Leave Type", "Leave Start / Effective Date", "Expected Return / Joining Date",
+        "Proceedings / Order No", "Remarks"
+    ]
+    rows = []
+    idx = 1
+    for emp, sm, p, st, gp in records:
+        if not (st and st.service_status in target_statuses):
+            continue
+        start_dt = st.leave_start_date or st.status_effective_from or st.proceedings_order_date
+        ret_dt = st.expected_return_date or st.expected_joining_date
+        proc_no = st.leave_proceedings_no or st.proceedings_order_no or "N/A"
+        rows.append([
+            idx,
+            emp.employee_id,
+            emp.name_ifmis,
+            emp.mobile_number or "N/A",
+            gp.gp_name,
+            gp.mandal_name,
+            _resolve_working_location(p, gp),
+            LEAVE_STATUS_LABELS.get(st.service_status, st.service_status),
+            _fmt_date(start_dt),
+            _fmt_date(ret_dt),
+            proc_no,
+            st.reason_remarks or st.leave_approval_details or "N/A",
+        ])
+        idx += 1
+    return headers, rows
+
+
 def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int], current_user: User, db: Session):
     # Enforce Mandal isolation if user is Mandal Admin
     target_mandal_id = current_user.mandal_id if current_user.role == "MANDAL_ADMIN" else mandal_id
@@ -223,7 +446,8 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
             q = q.filter(
                 or_(
                     EmployeeSalaryMapping.salary_mandal_id == target_mandal_id,
-                    EmployeePosting.actual_working_mandal_id == target_mandal_id
+                    EmployeePosting.actual_working_mandal_id == target_mandal_id,
+                    EmployeePosting.official_deputation_mandal_id == target_mandal_id
                 )
             )
         if gp_lgd:
@@ -234,6 +458,15 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
                 )
             )
         return q.order_by(GramPanchayat.mandal_name.asc(), GramPanchayat.gp_name.asc()).all()
+
+    if code == "CLEAR_VACANCY":
+        return _build_clear_vacancy_report(db, target_mandal_id)
+    elif code == "DEPUTED_PS":
+        return _build_deputed_ps_report(base_emp_query())
+    elif code == "LEAVE":
+        return _build_leave_report(base_emp_query())
+    elif code == "SUSPENSION":
+        return _build_suspension_report(base_emp_query())
 
     # Report A: District Employee Master Report
     if code == "A":
@@ -493,60 +726,11 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
 
     # Report H: Clear Vacant Gram Panchayats – Category A ONLY (No Salary Claimant & No Deputed PS Working)
     elif code == "H":
-        headers = [
-            "S.No", "Mandal Name", "Gram Panchayat Name", "GP LGD Code",
-            "Salary Strength", "Deputation In", "Deputation Out",
-            "Actual Working Strength", "Available Working Strength",
-            "Position Status", "Mandal Confirmation", "Verification Status", "Remarks"
-        ]
-        gps = db.query(GramPanchayat)
-        if target_mandal_id:
-            gps = gps.filter(GramPanchayat.mandal_id == target_mandal_id)
-        gps = gps.order_by(GramPanchayat.mandal_name.asc(), GramPanchayat.gp_name.asc()).all()
-        rows = []
-        idx = 1
-        for gp in gps:
-            sal_count = db.query(func.count(EmployeeSalaryMapping.id)).filter(
-                EmployeeSalaryMapping.salary_gp_lgd == gp.lgd_code,
-                EmployeeSalaryMapping.is_active == True
-            ).scalar() or 0
-
-            working_count = db.query(func.count(EmployeePosting.id)).filter(
-                EmployeePosting.actual_working_gp_lgd == gp.lgd_code,
-                EmployeePosting.is_current == True
-            ).scalar() or 0
-
-            # CATEGORY A STRICT CONDITION: No salary claimant AND no deputed employee working
-            if sal_count == 0 and working_count == 0:
-                rows.append([
-                    idx,
-                    gp.mandal_name,
-                    gp.gp_name,
-                    gp.lgd_code,
-                    0,  # Salary Strength
-                    0,  # Deputation In
-                    0,  # Deputation Out
-                    0,  # Actual Working Strength
-                    0,  # Available Working Strength
-                    "CATEGORY A: CLEAR VACANCY",
-                    "CONFIRMED CLEAR VACANT",
-                    "VERIFIED NO SECRETARY ON DUTY",
-                    gp.vacancy_remarks or "Sanctioned GP post with no employee claiming salary or working on deputation"
-                ])
-                idx += 1
-        return headers, rows
+        return _build_clear_vacancy_report(db, target_mandal_id)
 
     # Report I: Suspended Employees Report
     elif code == "I":
-        headers = ["S.No", "Employee ID", "Employee Name", "Salary GP", "Salary Mandal", "Suspension Order No", "Suspension Date", "Remarks"]
-        records = base_emp_query()
-        rows = []
-        idx = 1
-        for emp, sm, p, st, gp in records:
-            if st and st.service_status == "SUSPENDED":
-                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, st.suspension_order_no or "N/A", st.suspension_order_date.strftime("%Y-%m-%d") if st.suspension_order_date else "N/A", st.reason_remarks or "N/A"])
-                idx += 1
-        return headers, rows
+        return _build_suspension_report(base_emp_query())
 
     # Report J: Absconding Employees Report
     elif code == "J":
@@ -556,45 +740,25 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
         idx = 1
         for emp, sm, p, st, gp in records:
             if st and st.service_status == "ABSCONDING":
-                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, st.last_working_date.strftime("%Y-%m-%d") if st.last_working_date else "N/A", "YES" if st.disciplinary_initiated else "NO", st.reason_remarks or "N/A"])
+                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, _fmt_date(st.last_working_date or st.status_effective_from), "YES" if st.disciplinary_initiated else "NO", st.reason_remarks or "N/A"])
                 idx += 1
         return headers, rows
 
     # Report K: Long Leave Employees Report
     elif code == "K":
-        headers = ["S.No", "Employee ID", "Employee Name", "Salary GP", "Salary Mandal", "Leave Start Date", "Expected Return Date", "Proceedings Details"]
-        records = base_emp_query()
-        rows = []
-        idx = 1
-        for emp, sm, p, st, gp in records:
-            if st and st.service_status == "LONG_LEAVE":
-                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, st.leave_start_date.strftime("%Y-%m-%d") if st.leave_start_date else "N/A", st.expected_return_date.strftime("%Y-%m-%d") if st.expected_return_date else "N/A", st.leave_proceedings_no or "N/A"])
-                idx += 1
-        return headers, rows
+        return _build_leave_report(base_emp_query(), {"LONG_LEAVE"})
 
     # Report L: Medical Leave Employees Report
     elif code == "L":
-        headers = ["S.No", "Employee ID", "Employee Name", "Salary GP", "Salary Mandal", "Leave Start Date", "Expected Return Date", "Remarks"]
-        records = base_emp_query()
-        rows = []
-        idx = 1
-        for emp, sm, p, st, gp in records:
-            if st and st.service_status == "MEDICAL_LEAVE":
-                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, st.leave_start_date.strftime("%Y-%m-%d") if st.leave_start_date else "N/A", st.expected_return_date.strftime("%Y-%m-%d") if st.expected_return_date else "N/A", st.reason_remarks or "N/A"])
-                idx += 1
-        return headers, rows
+        return _build_leave_report(base_emp_query(), {"MEDICAL_LEAVE"})
 
     # Report M: Maternity and Child Care Leave Report
     elif code == "M":
-        headers = ["S.No", "Employee ID", "Employee Name", "Salary GP", "Salary Mandal", "Leave Type", "Leave Start Date", "Expected Return Date", "Proceedings"]
-        records = base_emp_query()
-        rows = []
-        idx = 1
-        for emp, sm, p, st, gp in records:
-            if st and st.service_status in ["MATERNITY_LEAVE", "CHILD_CARE_LEAVE"]:
-                rows.append([idx, emp.employee_id, emp.name_ifmis, gp.gp_name, gp.mandal_name, st.service_status, st.leave_start_date.strftime("%Y-%m-%d") if st.leave_start_date else "N/A", st.expected_return_date.strftime("%Y-%m-%d") if st.expected_return_date else "N/A", st.leave_proceedings_no or "N/A"])
-                idx += 1
-        return headers, rows
+        return _build_leave_report(base_emp_query(), {"MATERNITY_LEAVE", "CHILD_CARE_LEAVE"})
+
+    # Report N: Other Approved Leave Report
+    elif code == "N":
+        return _build_leave_report(base_emp_query(), {"EARNED_LEAVE", "EXTRAORDINARY_LEAVE", "OTHER_APPROVED_LEAVE", "OTHER"})
 
     # Report P: Expected Joining Date Crossed Report
     elif code == "P":
@@ -624,7 +788,10 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
     # Report W: Mandal-wise Data Submission Status Report
     elif code == "W":
         headers = ["S.No", "Mandal Name", "Mandal LGD", "Submission Status", "Submitted By", "Designation", "Submission Timestamp", "Locked?"]
-        mandals = db.query(Mandal).order_by(Mandal.mandal_name.asc()).all()
+        mandals_q = db.query(Mandal)
+        if target_mandal_id:
+            mandals_q = mandals_q.filter(Mandal.id == target_mandal_id)
+        mandals = mandals_q.order_by(Mandal.mandal_name.asc()).all()
         rows = []
         for idx, m in enumerate(mandals, start=1):
             sub = db.query(DataSubmission).filter(DataSubmission.mandal_id == m.id).first()

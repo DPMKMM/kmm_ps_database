@@ -51,11 +51,6 @@ function navigate(route) {
     route = "stage2-salary-mapping";
   }
 
-  // Mandal Admin cannot access District Reports (A-Z)
-  if (currentUser && currentUser.role === "MANDAL_ADMIN" && route === "reports") {
-    route = "mandal-reports";
-  }
-
   currentRoute = route;
   window.location.hash = route;
   
@@ -281,6 +276,7 @@ function updateHeaderAndNavScope(summary = null) {
   const badge2Label = document.getElementById("header-badge-2-label");
   const badge2Val = document.getElementById("header-badge-2-val");
   const navDistrictReports = document.getElementById("nav-district-reports");
+  const navDistrictReportsLabel = document.getElementById("nav-district-reports-label");
   const navMandalReportsLabel = document.getElementById("nav-mandal-reports-label");
   const navGPMasterLabel = document.getElementById("nav-gp-master-label");
 
@@ -307,8 +303,9 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Label) badge2Label.textContent = "Mandal LGD";
     if (badge2Val) badge2Val.textContent = currentUser.mandal_lgd || "-";
 
-    // Nav adjustments: Strictly hide district report for mandal admin
-    if (navDistrictReports) navDistrictReports.classList.add("hidden");
+    // Nav adjustments: Scope reports label strictly to user's Mandal
+    if (navDistrictReports) navDistrictReports.classList.remove("hidden");
+    if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = `${currentUser.mandal_name} Reports (All)`;
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = `${currentUser.mandal_name} Mandal Position`;
     if (navGPMasterLabel) navGPMasterLabel.textContent = `${currentUser.mandal_name} GPs (${mandalGpsCount || '...' })`;
 
@@ -323,6 +320,7 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Val) badge2Val.textContent = "20";
 
     if (navDistrictReports) navDistrictReports.classList.remove("hidden");
+    if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = "District Reports (All A-Z)";
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = "Mandal-wise Position";
     if (navGPMasterLabel) navGPMasterLabel.textContent = "GP Master (571 GPs)";
   }
@@ -585,17 +583,17 @@ async function renderDashboardView() {
         <div id="stat-cat-a" class="text-xl font-bold text-rose-700 font-mono">-</div>
         <div class="text-[9px] text-slate-400">No Salary & No Deputed PS</div>
       </div>
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-teal-400 cursor-pointer transition text-center" onclick="navigate('reports')">
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-teal-400 cursor-pointer transition text-center" onclick="openReport('V')">
         <div class="text-[10px] font-bold text-teal-700 uppercase">Category B (Deputed in Vacancy)</div>
         <div id="stat-cat-b" class="text-xl font-bold text-teal-700 font-mono">-</div>
         <div class="text-[9px] text-slate-400">Vacant GP with Deputed PS</div>
       </div>
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-purple-400 cursor-pointer transition text-center" onclick="navigate('reports')">
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-purple-400 cursor-pointer transition text-center" onclick="openReport('DEPUTED_PS')">
         <div class="text-[10px] font-bold text-purple-700 uppercase">Category C (Deputed Out)</div>
         <div id="stat-cat-c" class="text-xl font-bold text-purple-700 font-mono">-</div>
         <div class="text-[9px] text-slate-400">Salary GP with PS Deputed</div>
       </div>
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-amber-400 cursor-pointer transition text-center" onclick="navigate('reports')">
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200 hover:border-amber-400 cursor-pointer transition text-center" onclick="openReport('U')">
         <div class="text-[10px] font-bold text-amber-700 uppercase">Category D (No Working PS)</div>
         <div id="stat-cat-d" class="text-xl font-bold text-amber-700 font-mono">-</div>
         <div class="text-[9px] text-slate-400">Salary GP Unattended</div>
@@ -2442,12 +2440,12 @@ async function renderClearVacancyRegisterView() {
           <p class="text-xs text-slate-500">Dedicated register strictly displaying Gram Panchayats with zero salary claimants, zero deputed secretaries, and zero attending personnel.</p>
         </div>
         <div class="flex items-center space-x-2">
-          <a href="${API_BASE}/reports/export/H?format=excel" download class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportExcel('H')" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 mr-1.5"></i> Download Category A Excel
-          </a>
-          <a href="${API_BASE}/reports/export/H?format=csv" download class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          </button>
+          <button onclick="downloadReportCSV('H')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> CSV
-          </a>
+          </button>
         </div>
       </div>
 
@@ -2602,12 +2600,12 @@ async function renderReconciliationReportView() {
           <p class="text-xs text-slate-500">Mandatory 22-column comprehensive reconciliation statement showing salary GP, official deputation GP, internal reassignment, presently working GP, and verification status.</p>
         </div>
         <div class="flex items-center space-x-2">
-          <a href="${API_BASE}/reports/export/D?format=excel" download class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportExcel('D')" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 mr-1.5"></i> Export 22-Col Excel
-          </a>
-          <a href="${API_BASE}/reports/export/D?format=csv" download class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          </button>
+          <button onclick="downloadReportCSV('D')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Export CSV
-          </a>
+          </button>
           <button onclick="window.print()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-semibold flex items-center shadow-sm">
             <i data-lucide="printer" class="w-3.5 h-3.5 mr-1"></i> Print
           </button>
@@ -4701,18 +4699,61 @@ async function renderAvailabilityView() {
 }
 
 // ==========================================
-// 11. DISTRICT REPORTS (ALL 26 REPORTS A-Z)
+// 11. REPORTS (KEY OPTIONS & ALL A-Z REPORTS)
 // ==========================================
 let currentReportCode = "A";
+let currentReportMandalId = "";
+
+const QUICK_REPORT_OPTIONS = [
+  { code: "CLEAR_VACANCY", label: "Clear Vacancy", icon: "shield-alert", badgeClass: "border-rose-200 text-rose-800 bg-rose-50 hover:bg-rose-100", activeClass: "ring-2 ring-rose-600 bg-rose-600 text-white border-rose-600" },
+  { code: "DEPUTED_PS", label: "Deputed Panchayat Secretaries", icon: "repeat", badgeClass: "border-purple-200 text-purple-800 bg-purple-50 hover:bg-purple-100", activeClass: "ring-2 ring-purple-700 bg-purple-700 text-white border-purple-700" },
+  { code: "LEAVE", label: "Leave", icon: "calendar-off", badgeClass: "border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100", activeClass: "ring-2 ring-amber-600 bg-amber-600 text-white border-amber-600" },
+  { code: "SUSPENSION", label: "Suspension", icon: "ban", badgeClass: "border-red-200 text-red-800 bg-red-50 hover:bg-red-100", activeClass: "ring-2 ring-red-700 bg-red-700 text-white border-red-700" },
+  { code: "D", label: "22-Col Reconciliation", icon: "table", badgeClass: "border-teal-200 text-teal-800 bg-teal-50 hover:bg-teal-100", activeClass: "ring-2 ring-teal-700 bg-teal-700 text-white border-teal-700" },
+  { code: "A", label: "All Employee Master", icon: "users", badgeClass: "border-slate-200 text-slate-800 bg-slate-50 hover:bg-slate-100", activeClass: "ring-2 ring-govblue-900 bg-govblue-900 text-white border-govblue-900" }
+];
+
+function escapeReportCell(val) {
+  if (val === null || val === undefined) return "";
+  return String(val)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function openReport(code) {
+  currentReportCode = code || "A";
+  navigate("reports");
+}
+
+function selectReportOption(code) {
+  currentReportCode = code;
+  const sel = document.getElementById("report-code-select");
+  if (sel) sel.value = code;
+  updateQuickReportOptionStyles();
+  loadReportPreview();
+}
+
+function updateQuickReportOptionStyles() {
+  QUICK_REPORT_OPTIONS.forEach(opt => {
+    const btn = document.getElementById(`quick-rep-btn-${opt.code}`);
+    if (!btn) return;
+    const isSuspAlias = opt.code === "SUSPENSION" && currentReportCode === "I";
+    const isClearAlias = opt.code === "CLEAR_VACANCY" && currentReportCode === "H";
+    const isActive = currentReportCode === opt.code || isSuspAlias || isClearAlias;
+    btn.className = `report-quick-btn px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm ${isActive ? opt.activeClass : opt.badgeClass}`;
+  });
+}
 
 async function renderReportsView() {
-  if (currentUser && currentUser.role === "MANDAL_ADMIN") {
-    navigate("mandal-reports");
-    return;
+  const container = document.getElementById("view-reports");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
+  if (isMandal) {
+    currentReportMandalId = String(currentUser.mandal_id || "");
   }
 
-  const container = document.getElementById("view-reports");
-  
   let reportList = [];
   try {
     reportList = await fetchAPI("/reports/list");
@@ -4720,22 +4761,53 @@ async function renderReportsView() {
     reportList = [];
   }
 
+  const keyReports = reportList.filter(r => r.category === "KEY");
+  const standardReports = reportList.filter(r => r.category !== "KEY");
+
   let optionsHtml = "";
-  reportList.forEach(r => {
+  if (keyReports.length > 0) {
+    optionsHtml += `<optgroup label="Key Reports (Clear Vacancy / Deputation / Leave / Suspension)">`;
+    keyReports.forEach(r => {
+      optionsHtml += `<option value="${r.code}">${r.name}</option>`;
+    });
+    optionsHtml += `</optgroup>`;
+  }
+  optionsHtml += `<optgroup label="All Statutory Reports (A to Z)">`;
+  standardReports.forEach(r => {
     optionsHtml += `<option value="${r.code}">${r.code}. ${r.name}</option>`;
   });
+  optionsHtml += `</optgroup>`;
+
+  let mandalFilterOptions = `<option value="">All Mandals (Complete District)</option>`;
+  cachedMandals.forEach(m => {
+    mandalFilterOptions += `<option value="${m.id}">${m.mandal_name} (LGD: ${m.mandal_lgd})</option>`;
+  });
+
+  const quickButtonsHtml = QUICK_REPORT_OPTIONS.map(opt => `
+    <button id="quick-rep-btn-${opt.code}" type="button" onclick="selectReportOption('${opt.code}')" class="report-quick-btn px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm ${opt.badgeClass}">
+      <i data-lucide="${opt.icon}" class="w-3.5 h-3.5"></i>
+      <span>${opt.label}</span>
+    </button>
+  `).join("");
+
+  const headerTitle = isMandal
+    ? `${currentUser.mandal_name} Mandal Reports Generator`
+    : "District Statutory Report Generator";
+  const headerSubtitle = isMandal
+    ? `Clear Vacancy, Deputed Panchayat Secretaries, Leave, Suspension & all A–Z reports scoped to ${currentUser.mandal_name} Mandal`
+    : "Clear Vacancy, Deputed Panchayat Secretaries, Leave, Suspension & all 26 Official Reports (A to Z) with Excel, CSV and Print exports";
 
   container.innerHTML = `
-    <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+    <div class="flex flex-wrap justify-between items-center mb-4 gap-3">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">District Statutory Report Generator</h2>
-        <p class="text-xs text-slate-500">26 Official Government Reports (A to Z) with Excel, CSV and Print exports</p>
+        <h2 class="text-xl font-bold text-slate-900">${headerTitle}</h2>
+        <p class="text-xs text-slate-500">${headerSubtitle}</p>
       </div>
       <div class="flex space-x-2">
-        <button onclick="downloadReportExcel(currentReportCode)" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow">
+        <button onclick="downloadReportExcel(currentReportCode, currentReportMandalId)" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow">
           <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 mr-1.5"></i> Export Excel (XLSX)
         </button>
-        <button onclick="downloadReportCSV(currentReportCode)" class="px-3.5 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow">
+        <button onclick="downloadReportCSV(currentReportCode, currentReportMandalId)" class="px-3.5 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow">
           <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Export CSV
         </button>
         <button onclick="window.print()" class="px-3.5 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-semibold flex items-center shadow">
@@ -4744,16 +4816,30 @@ async function renderReportsView() {
       </div>
     </div>
 
-    <!-- Report Selector Dropdown -->
-    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-5 flex flex-wrap gap-3 items-center">
-      <div class="flex-1 min-w-[300px]">
-        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Select Official Report (A to Z)</label>
+    <!-- Quick Options Bar -->
+    <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm mb-4">
+      <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Report Options</div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        ${quickButtonsHtml}
+      </div>
+    </div>
+
+    <!-- Report Selector Dropdown & Mandal Filter -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-5 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+      <div class="md:col-span-6">
+        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Select Report (Key Options & All Reports A to Z)</label>
         <select id="report-code-select" onchange="handleReportSelectChange(event)" class="w-full p-2 border border-slate-300 rounded font-semibold text-xs bg-white text-slate-900">
           ${optionsHtml}
         </select>
       </div>
-      <div class="pt-4">
-        <button onclick="loadReportPreview()" class="px-4 py-2 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-bold">
+      <div class="md:col-span-4">
+        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Mandal Filter</label>
+        <select id="report-mandal-filter" ${isMandal ? "disabled" : ""} onchange="handleReportMandalFilterChange(event)" class="w-full p-2 border border-slate-300 rounded font-semibold text-xs bg-white text-slate-900 disabled:bg-slate-100">
+          ${mandalFilterOptions}
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <button onclick="loadReportPreview()" class="w-full px-4 py-2 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-bold">
           Generate Preview
         </button>
       </div>
@@ -4765,8 +4851,12 @@ async function renderReportsView() {
       <div class="text-center pb-4 mb-4 border-b-2 border-slate-800">
         <div class="text-xs font-bold text-slate-500 uppercase tracking-widest">GOVERNMENT OF TELANGANA</div>
         <h3 class="text-base font-bold text-govblue-950">DISTRICT PANCHAYAT OFFICE, KHAMMAM</h3>
-        <h4 id="report-preview-title" class="text-sm font-bold text-amber-700 mt-1">District Employee Master Report</h4>
-        <div class="text-[11px] text-slate-500 mt-1">Generated On: <span id="report-preview-timestamp">-</span> | Khammam District</div>
+        <h4 id="report-preview-title" class="text-sm font-bold text-amber-700 mt-1">Loading Report...</h4>
+        <div class="text-[11px] text-slate-500 mt-1">
+          Scope: <span id="report-preview-scope" class="font-semibold text-slate-700">-</span> |
+          Total Records: <span id="report-preview-count" class="font-mono font-bold text-slate-800">-</span> |
+          Generated On: <span id="report-preview-timestamp">-</span>
+        </div>
       </div>
 
       <div id="report-preview-table-wrap" class="overflow-x-auto text-xs">
@@ -4774,6 +4864,12 @@ async function renderReportsView() {
       </div>
     </div>
   `;
+  const sel = document.getElementById("report-code-select");
+  if (sel) sel.value = currentReportCode;
+  const mandalSel = document.getElementById("report-mandal-filter");
+  if (mandalSel && currentReportMandalId) mandalSel.value = currentReportMandalId;
+
+  updateQuickReportOptionStyles();
   lucide.createIcons();
 
   loadReportPreview();
@@ -4781,6 +4877,12 @@ async function renderReportsView() {
 
 function handleReportSelectChange(e) {
   currentReportCode = e.target.value;
+  updateQuickReportOptionStyles();
+  loadReportPreview();
+}
+
+function handleReportMandalFilterChange(e) {
+  currentReportMandalId = e.target.value;
   loadReportPreview();
 }
 
@@ -4791,9 +4893,27 @@ async function loadReportPreview() {
   wrap.innerHTML = `<div class="py-8 text-center text-slate-400">Generating report...</div>`;
 
   try {
-    const res = await fetchAPI(`/reports/data/${currentReportCode}`);
-    document.getElementById("report-preview-title").textContent = `Report ${res.report_code}: ${res.title}`;
+    let url = `/reports/data/${encodeURIComponent(currentReportCode)}`;
+    if (currentReportMandalId) {
+      url += `?mandal_id=${encodeURIComponent(currentReportMandalId)}`;
+    }
+    const res = await fetchAPI(url);
+    document.getElementById("report-preview-title").textContent = `${res.report_code}: ${res.title}`;
     document.getElementById("report-preview-timestamp").textContent = res.generated_at;
+    const countEl = document.getElementById("report-preview-count");
+    if (countEl) countEl.textContent = res.total_records ?? (res.rows ? res.rows.length : 0);
+
+    const scopeEl = document.getElementById("report-preview-scope");
+    if (scopeEl) {
+      if (currentUser && currentUser.role === "MANDAL_ADMIN") {
+        scopeEl.textContent = `${currentUser.mandal_name} Mandal`;
+      } else if (currentReportMandalId) {
+        const mObj = cachedMandals.find(m => String(m.id) === String(currentReportMandalId));
+        scopeEl.textContent = mObj ? `${mObj.mandal_name} Mandal` : "Selected Mandal";
+      } else {
+        scopeEl.textContent = "All 20 Mandals (Khammam District)";
+      }
+    }
 
     const headers = res.headers || [];
     const rows = res.rows || [];
@@ -4807,13 +4927,13 @@ async function loadReportPreview() {
       <table class="w-full text-left text-xs text-slate-800 border-collapse">
         <thead class="bg-slate-100 border-b border-slate-300 text-[11px] font-bold text-slate-700 uppercase">
           <tr>
-            ${headers.map(h => `<th class="px-3 py-2 border-r border-slate-200 last:border-r-0">${h}</th>`).join('')}
+            ${headers.map(h => `<th class="px-3 py-2 border-r border-slate-200 last:border-r-0">${escapeReportCell(h)}</th>`).join('')}
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
           ${rows.map(r => `
             <tr class="table-hover-row">
-              ${r.map(val => `<td class="px-3 py-2 border-r border-slate-100 last:border-r-0">${val !== null ? val : ''}</td>`).join('')}
+              ${r.map(val => `<td class="px-3 py-2 border-r border-slate-100 last:border-r-0">${val !== null && val !== undefined ? escapeReportCell(val) : ''}</td>`).join('')}
             </tr>
           `).join('')}
         </tbody>
@@ -4821,16 +4941,60 @@ async function loadReportPreview() {
     `;
     wrap.innerHTML = tHtml;
   } catch (err) {
-    wrap.innerHTML = `<div class="py-4 text-center text-red-500">Error generating report: ${err.message}</div>`;
+    wrap.innerHTML = `<div class="py-4 text-center text-red-500">Error generating report: ${err.detail || err.message}</div>`;
   }
 }
 
-function downloadReportExcel(code) {
-  window.open(`${API_BASE}/reports/export/${code}?format=excel`, '_blank');
+async function downloadAuthenticatedFile(url, fallbackFilename) {
+  resetSessionTimer();
+  const headers = {};
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      if (response.status === 401) {
+        alert("Your session has expired. Please log in again to export reports.");
+        handleLogout(true);
+        return;
+      }
+      const errText = await response.text();
+      alert(`Export failed (${response.status}): ${errText}`);
+      return;
+    }
+    const blob = await response.blob();
+    const disp = response.headers.get("Content-Disposition") || "";
+    const match = disp.match(/filename="?([^"]+)"?/i);
+    const filename = match ? match[1] : fallbackFilename;
+
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch (err) {
+    alert(`Download error: ${err.message}`);
+  }
 }
 
-function downloadReportCSV(code) {
-  window.open(`${API_BASE}/reports/export/${code}?format=csv`, '_blank');
+function buildReportExportUrl(code, format, mandalId = "") {
+  let url = `${API_BASE}/reports/export/${encodeURIComponent(code)}?format=${encodeURIComponent(format)}`;
+  if (mandalId) {
+    url += `&mandal_id=${encodeURIComponent(mandalId)}`;
+  }
+  return url;
+}
+
+function downloadReportExcel(code, mandalId = "") {
+  downloadAuthenticatedFile(buildReportExportUrl(code, "excel", mandalId), `Report_${code}.xlsx`);
+}
+
+function downloadReportCSV(code, mandalId = "") {
+  downloadAuthenticatedFile(buildReportExportUrl(code, "csv", mandalId), `Report_${code}.csv`);
 }
 
 // ==========================================
@@ -4847,12 +5011,16 @@ async function renderMandalReportsView() {
 
   const container = document.getElementById("view-mandal-reports");
   container.innerHTML = `
-    <div class="flex justify-between items-center mb-5">
+    <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
       <div>
         <h2 class="text-xl font-bold text-slate-900">${title}</h2>
         <p class="text-xs text-slate-500">${subtitle}</p>
       </div>
-      <div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="openReport('CLEAR_VACANCY')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded text-xs font-semibold">Clear Vacancy</button>
+        <button onclick="openReport('DEPUTED_PS')" class="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded text-xs font-semibold">Deputed PS</button>
+        <button onclick="openReport('LEAVE')" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded text-xs font-semibold">Leave</button>
+        <button onclick="openReport('SUSPENSION')" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded text-xs font-semibold">Suspension</button>
         <button onclick="downloadReportExcel('B')" class="px-3.5 py-1.5 bg-govblue-900 text-white rounded text-xs font-semibold flex items-center shadow">
           <i data-lucide="download" class="w-3.5 h-3.5 mr-1.5"></i> ${exportLabel}
         </button>

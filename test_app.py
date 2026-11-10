@@ -510,5 +510,139 @@ class TestKhammamPSApplication(unittest.TestCase):
 
         self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {a_token}"})
 
+    def test_12_key_report_options_clear_vacancy_deputed_leave_suspension(self):
+        """
+        Verify CLEAR_VACANCY, DEPUTED_PS, LEAVE, and SUSPENSION reports work like all reports
+        with JSON preview, Excel/CSV exports, and Mandal scoping.
+        """
+        enkoor_user = self.db.query(User).filter(User.username == "enkoor").first()
+        kallur_user = self.db.query(User).filter(User.username == "kallur").first()
+        enkoor_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == enkoor_user.mandal_id).all()
+        kallur_gp = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == kallur_user.mandal_id).first()
+
+        # Login admin
+        admin_login = self.client.post("/api/auth/login", json={
+            "username": "admin",
+            "password": "Admin@Khammam2026",
+            "device_info": "Reports Key Options Test"
+        })
+        self.assertEqual(admin_login.status_code, 200)
+        a_token = admin_login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {a_token}"}
+
+        # 1. Verify /api/reports/list includes the 4 key report options
+        list_res = self.client.get("/api/reports/list", headers=headers)
+        self.assertEqual(list_res.status_code, 200)
+        codes = [item["code"] for item in list_res.json()]
+        for code in ("CLEAR_VACANCY", "DEPUTED_PS", "LEAVE", "SUSPENSION"):
+            self.assertIn(code, codes)
+
+        # Create 3 targeted test employees: deputed + suspended + leave (earned/medical)
+        dep_emp = f"TS-KDEP-{uuid.uuid4().hex[:4].upper()}"
+        susp_emp = f"TS-KSUSP-{uuid.uuid4().hex[:4].upper()}"
+        leave_emp = f"TS-KLVE-{uuid.uuid4().hex[:4].upper()}"
+
+        self.assertEqual(self.client.post("/api/employees", headers=headers, json={
+            "employee_id": dep_emp,
+            "name_ifmis": "Deputed Test PS",
+            "dob": "1990-01-10",
+            "mobile_number": "9000000001",
+            "salary_gp_lgd": enkoor_gps[0].lgd_code,
+            "is_working_in_salary_gp": False,
+            "posting_type": "WITHIN_MANDAL",
+            "actual_working_gp_lgd": enkoor_gps[1].lgd_code,
+            "deputation_order_no": "PROC-DEP-101",
+            "service_status": "WORKING"
+        }).status_code, 201)
+
+        self.assertEqual(self.client.post("/api/employees", headers=headers, json={
+            "employee_id": susp_emp,
+            "name_ifmis": "Suspended Test PS",
+            "dob": "1989-02-11",
+            "mobile_number": "9000000002",
+            "salary_gp_lgd": enkoor_gps[2].lgd_code,
+            "is_working_in_salary_gp": True,
+            "service_status": "SUSPENDED",
+            "suspension_order_no": "PROC-SUSP-202",
+            "suspension_effective_date": "2026-10-01"
+        }).status_code, 201)
+
+        # Register Leave employee via Stage 1 + Combined Stage 2 & 3 (verifying status_order_no fallback too)
+        self.assertEqual(self.client.post("/api/employees/stage1-register", headers=headers, json={
+            "employee_id": leave_emp,
+            "name_ifmis": "Leave Test PS",
+            "dob": "1991-03-12",
+            "mobile_number": "9000000003"
+        }).status_code, 201)
+        self.assertEqual(self.client.post("/api/employees/stage2-combined-mapping", headers=headers, json={
+            "employee_id": leave_emp,
+            "salary_gp_lgd": kallur_gp.lgd_code,
+            "working_from_date": "2026-01-01",
+            "service_status": "EARNED_LEAVE",
+            "status_order_no": "PROC-LVE-303",
+            "status_order_date": "2026-10-15",
+            "is_working_in_salary_gp": True,
+            "posting_type": "OWN_GP"
+        }).status_code, 200)
+
+        # 2. Verify Clear Vacancy excludes mapped GPs and works on JSON + XLSX + CSV
+        cv_res = self.client.get(f"/api/reports/data/CLEAR_VACANCY?mandal_id={enkoor_user.mandal_id}", headers=headers)
+        self.assertEqual(cv_res.status_code, 200)
+        cv_lgds = {r[3] for r in cv_res.json()["rows"]}
+        self.assertNotIn(enkoor_gps[0].lgd_code, cv_lgds)
+        self.assertNotIn(enkoor_gps[1].lgd_code, cv_lgds)
+
+        # 3. Verify Deputed PS returns dep_emp with order & working info
+        dep_res = self.client.get("/api/reports/data/DEPUTED_PS", headers=headers)
+        self.assertEqual(dep_res.status_code, 200)
+        dep_ids = [r[1] for r in dep_res.json()["rows"]]
+        self.assertIn(dep_emp, dep_ids)
+        self.assertNotIn(susp_emp, dep_ids)
+
+        # 4. Verify Leave returns leave_emp (including EARNED_LEAVE / all leave subtypes)
+        lve_res = self.client.get("/api/reports/data/LEAVE", headers=headers)
+        self.assertEqual(lve_res.status_code, 200)
+        lve_rows = lve_res.json()["rows"]
+        lve_row = next((r for r in lve_rows if r[1] == leave_emp), None)
+        self.assertIsNotNone(lve_row)
+        self.assertIn("Earned Leave", lve_row)
+        self.assertIn("PROC-LVE-303", lve_row)
+
+        # Also check Report N handles EARNED_LEAVE instead of returning all employees
+        n_res = self.client.get("/api/reports/data/N", headers=headers)
+        self.assertEqual(n_res.status_code, 200)
+        n_ids = [r[1] for r in n_res.json()["rows"]]
+        self.assertIn(leave_emp, n_ids)
+        self.assertNotIn(dep_emp, n_ids)
+
+        # 5. Verify Suspension returns susp_emp with order & date preserved from Stage 2
+        susp_res = self.client.get("/api/reports/data/SUSPENSION", headers=headers)
+        self.assertEqual(susp_res.status_code, 200)
+        susp_row = next((r for r in susp_res.json()["rows"] if r[1] == susp_emp), None)
+        self.assertIsNotNone(susp_row)
+        self.assertIn("PROC-SUSP-202", susp_row)
+        self.assertIn("2026-10-01", susp_row)
+
+        # 6. Verify Excel & CSV exports return HTTP 200 for all 4 new report options
+        for code in ("CLEAR_VACANCY", "DEPUTED_PS", "LEAVE", "SUSPENSION"):
+            for fmt in ("excel", "csv"):
+                exp_res = self.client.get(f"/api/reports/export/{code}?format={fmt}", headers=headers)
+                self.assertEqual(exp_res.status_code, 200, f"Export failed for {code} ({fmt})")
+                self.assertGreater(len(exp_res.content), 20)
+
+        self.client.post("/api/auth/logout", headers=headers)
+
+        # 7. Verify Mandal Admin strictly sees only their Mandal across new reports
+        enkoor_login = self.client.post("/api/auth/login", json={
+            "username": "enkoor",
+            "password": "Mandal@5065",
+            "device_info": "Enkoor Report Test"
+        })
+        e_headers = {"Authorization": f"Bearer {enkoor_login.json()['access_token']}"}
+        e_leave = self.client.get("/api/reports/data/LEAVE", headers=e_headers)
+        self.assertEqual(e_leave.status_code, 200)
+        self.assertNotIn(leave_emp, [r[1] for r in e_leave.json()["rows"]])
+        self.client.post("/api/auth/logout", headers=e_headers)
+
 if __name__ == "__main__":
     unittest.main()
