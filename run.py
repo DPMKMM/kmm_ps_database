@@ -1,8 +1,23 @@
 import os
 import sys
+import pathlib
+import importlib.abc
+import importlib.util
 
 # Ensure pure-Python mode for SQLAlchemy to avoid Windows AppControl policy blocking cython DLLs
 os.environ["DISABLE_SQLALCHEMY_CEXT"] = "1"
+if sys.platform == "win32":
+    class _SqlAlchemyPurePythonFinder(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path, target=None):
+            if fullname.startswith("sqlalchemy.") and fullname.endswith("_cy") and path:
+                mod_name = fullname.rsplit(".", 1)[-1]
+                for p in path:
+                    py_file = pathlib.Path(p) / f"{mod_name}.py"
+                    if py_file.exists():
+                        return importlib.util.spec_from_file_location(fullname, str(py_file))
+            return None
+
+    sys.meta_path.insert(0, _SqlAlchemyPurePythonFinder())
 
 import uvicorn
 from app.config import settings
