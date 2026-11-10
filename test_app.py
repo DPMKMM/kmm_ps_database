@@ -60,11 +60,11 @@ class TestKhammamPSApplication(unittest.TestCase):
         self.assertIn("access_token", data)
         self.assertEqual(data["role"], "SUPER_ADMIN")
 
-    def test_03_single_active_session_restriction(self):
+    def test_03_multi_user_concurrent_sessions(self):
         """
-        Verify Section 5 mandatory requirement:
-        Each Mandal account must have only ONE active login session.
-        Concurrent login from a second device must be rejected with HTTP 409.
+        Verify multi-user concurrent session support:
+        Multiple devices/operators can sign in concurrently to the same account,
+        and logging out on one device does not terminate the other device's session.
         """
         # Device 1 logs in
         login1 = self.client.post("/api/auth/login", json={
@@ -74,35 +74,40 @@ class TestKhammamPSApplication(unittest.TestCase):
         })
         self.assertEqual(login1.status_code, 200)
         token1 = login1.json()["access_token"]
-        
-        # Device 2 tries to log in using the same Mandal account
+        sess1 = login1.json()["session_id"]
+
+        # Device 2 simultaneously logs in with the same Mandal account
         login2 = self.client.post("/api/auth/login", json={
             "username": "enkoor",
             "password": "Mandal@5065",
             "device_info": "Mobile Device B"
         })
-        self.assertEqual(login2.status_code, 409, "Second login must be rejected with HTTP 409")
-        err_msg = login2.json().get("detail", "")
-        self.assertIn("This Mandal account is already logged in on another device", err_msg)
-        
-        # Terminate session 1 (simulate logout)
+        self.assertEqual(login2.status_code, 200, "Concurrent login must succeed in multi-user session mode")
+        token2 = login2.json()["access_token"]
+        sess2 = login2.json()["session_id"]
+        self.assertNotEqual(sess1, sess2)
+
+        # Both sessions must be valid simultaneously
+        me1 = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
+        me2 = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token2}"})
+        self.assertEqual(me1.status_code, 200)
+        self.assertEqual(me2.status_code, 200)
+
+        # Terminate session 1 (Device A logs out)
         logout_res = self.client.post(
             "/api/auth/logout",
             headers={"Authorization": f"Bearer {token1}"}
         )
         self.assertEqual(logout_res.status_code, 200)
-        
-        # Device 2 can now successfully log in
-        login3 = self.client.post("/api/auth/login", json={
-            "username": "enkoor",
-            "password": "Mandal@5065",
-            "device_info": "Mobile Device B"
-        })
-        self.assertEqual(login3.status_code, 200, "Login must succeed after previous session logout")
-        
-        # Clean up session 3
-        token3 = login3.json()["access_token"]
-        self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token3}"})
+
+        # Session 1 is now invalid, while Session 2 remains active
+        me1_after = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
+        me2_after = self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {token2}"})
+        self.assertEqual(me1_after.status_code, 401)
+        self.assertEqual(me2_after.status_code, 200)
+
+        # Clean up session 2
+        self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token2}"})
 
     def test_04_global_employee_id_duplicate_validation(self):
         """

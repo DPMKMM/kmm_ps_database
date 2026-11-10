@@ -328,11 +328,16 @@ function updateHeaderAndNavScope(summary = null) {
   }
 }
 
-async function handleLogout() {
-  try {
-    await fetchAPI("/auth/logout", { method: "POST" });
-  } catch (e) {
-    // Continue local cleanup
+async function handleLogout(skipServerLogout = false) {
+  if (!skipServerLogout && authToken) {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      });
+    } catch (e) {
+      // Continue local cleanup
+    }
   }
   clearInterval(sessionTimerInterval);
   authToken = null;
@@ -364,7 +369,7 @@ async function fetchAPI(endpoint, options = {}) {
     // Token expired or force logged out
     const err = await res.json().catch(() => ({}));
     alert(err.detail || "Your session has ended. Please log in again.");
-    handleLogout();
+    handleLogout(true);
     throw new Error("Unauthorized");
   }
 
@@ -5099,12 +5104,12 @@ async function renderUserManagementView() {
                   ${u.is_locked ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white">LOCKED (5 Failed)</span>` : `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">ACTIVE</span>`}
                 </td>
                 <td class="py-2.5 px-3 text-center">
-                  ${u.has_active_session ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800">LOGGED IN</span>` : `<span class="text-slate-400 text-[10px]">OFFLINE</span>`}
+                  ${u.has_active_session ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800">${u.active_session_count > 1 ? `${u.active_session_count} SESSIONS` : 'LOGGED IN'}</span>` : `<span class="text-slate-400 text-[10px]">OFFLINE</span>`}
                 </td>
                 <td class="py-2.5 px-3 text-right space-x-1.5">
                   ${u.is_locked ? `<button onclick="handleUnlockUser(${u.id}, '${u.username}')" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold">Unlock</button>` : ''}
                   <button onclick="handleAdminResetPassword(${u.id}, '${u.username}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[11px]">Reset Pwd</button>
-                  ${u.has_active_session ? `<button onclick="handleAdminForceLogout('${u.username}')" class="px-2 py-1 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded text-[11px] font-bold">Terminate Session</button>` : ''}
+                  ${u.has_active_session ? `<button onclick="handleAdminForceLogout('${u.username}')" class="px-2 py-1 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded text-[11px] font-bold">Terminate Session(s)</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -5160,7 +5165,7 @@ async function renderSessionsHistoryView() {
     <div class="flex justify-between items-center mb-5">
       <div>
         <h2 class="text-xl font-bold text-slate-900">Active Sessions & Security Login History</h2>
-        <p class="text-xs text-slate-500">Section 5: Strict single session tracking, IP logging, and concurrent access auditing</p>
+        <p class="text-xs text-slate-500">Multi-user concurrent session tracking, IP logging, and independent device auditing</p>
       </div>
     </div>
 
@@ -5168,7 +5173,7 @@ async function renderSessionsHistoryView() {
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
       <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
         <h3 class="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center">
-          <i data-lucide="radio" class="w-4 h-4 mr-2 text-emerald-600 animate-pulse"></i> Live Active User Sessions (Single Device Bound)
+          <i data-lucide="radio" class="w-4 h-4 mr-2 text-emerald-600 animate-pulse"></i> Live Active User Sessions (Multi-User Concurrent Enabled)
         </h3>
         <button onclick="renderSessionsHistoryView()" class="text-xs text-slate-600 hover:text-slate-900 flex items-center">
           <i data-lucide="refresh-cw" class="w-3.5 h-3.5 mr-1"></i> Refresh

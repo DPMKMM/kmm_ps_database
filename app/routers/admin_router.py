@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
+from app.config import settings
 from app.models import (
     User, Mandal, UserSession, LoginHistory, AuditLog, DataSubmission
 )
@@ -21,13 +22,16 @@ def list_users(
     users = db.query(User).order_by(User.role.asc(), User.username.asc()).all()
     results = []
     now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=settings.SESSION_INACTIVITY_MINUTES)
     
     for u in users:
-        # Check active session
-        active_sess = db.query(UserSession).filter(
+        # Collect all active non-expired sessions for this user (multi-user concurrent support)
+        active_sessions = db.query(UserSession).filter(
             UserSession.user_id == u.id,
-            UserSession.session_status == "ACTIVE"
-        ).first()
+            UserSession.session_status == "ACTIVE",
+            UserSession.last_activity >= cutoff
+        ).order_by(UserSession.last_activity.desc()).all()
+        latest_sess = active_sessions[0] if active_sessions else None
         
         m_name = u.mandal.mandal_name if u.mandal else ("All Mandals" if u.role == "SUPER_ADMIN" else "District")
         
@@ -44,9 +48,10 @@ def list_users(
             "is_active": u.is_active,
             "must_change_password": u.must_change_password,
             "created_at": u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "",
-            "has_active_session": bool(active_sess),
-            "active_session_ip": active_sess.ip_address if active_sess else None,
-            "active_session_device": active_sess.device_info if active_sess else None
+            "has_active_session": len(active_sessions) > 0,
+            "active_session_count": len(active_sessions),
+            "active_session_ip": latest_sess.ip_address if latest_sess else None,
+            "active_session_device": latest_sess.device_info if latest_sess else None
         })
     return results
 

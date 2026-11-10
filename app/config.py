@@ -12,6 +12,7 @@ class Settings:
     ALGORITHM: str = "HS256"
     SESSION_INACTIVITY_MINUTES: int = int(os.getenv("SESSION_INACTIVITY_MINUTES", "15"))
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
+    ALLOW_MULTI_USER_SESSIONS: bool = os.getenv("ALLOW_MULTI_USER_SESSIONS", "true").lower() == "true"
     
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./khammam_ps.db")
     UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")

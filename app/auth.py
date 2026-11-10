@@ -117,7 +117,7 @@ def authenticate_and_create_session(
             detail=f"Invalid username or password. Remaining attempts: {settings.MAX_FAILED_LOGIN_ATTEMPTS - user.failed_attempts}"
         )
 
-    # Password is correct - check SINGLE ACTIVE LOGIN SESSION RESTRICTION
+    # Password is correct - clean up expired sessions and handle multi-user vs single-session policy
     now = datetime.utcnow()
     inactivity_cutoff = now - timedelta(minutes=settings.SESSION_INACTIVITY_MINUTES)
     
@@ -133,35 +133,31 @@ def authenticate_and_create_session(
             s.logout_datetime = now
     db.commit()
     
-    # Re-query remaining active sessions
-    still_active = db.query(UserSession).filter(
-        UserSession.user_id == user.id,
-        UserSession.session_status == "ACTIVE"
-    ).first()
-    
-    if still_active:
-        # Mandatory requirement Section 5:
-        # "Each Mandal account must have only ONE active login session at any given time."
-        if user.role == "MANDAL_ADMIN":
-            log = LoginHistory(
-                user_id=user.id,
-                username_attempted=username,
-                ip_address=ip_address,
-                device_info=device_info,
-                status="FAILED_ALREADY_LOGGED_IN",
-                reason="Concurrent login blocked - active Mandal session exists"
-            )
-            db.add(log)
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This Mandal account is already logged in on another device. Please logout from the existing device before attempting a new login."
-            )
-        else:
-            # For District Super Admin, supersede previous session
-            still_active.session_status = "TERMINATED"
-            still_active.logout_datetime = now
-            db.commit()
+    if not settings.ALLOW_MULTI_USER_SESSIONS:
+        still_active = db.query(UserSession).filter(
+            UserSession.user_id == user.id,
+            UserSession.session_status == "ACTIVE"
+        ).first()
+        if still_active:
+            if user.role == "MANDAL_ADMIN":
+                log = LoginHistory(
+                    user_id=user.id,
+                    username_attempted=username,
+                    ip_address=ip_address,
+                    device_info=device_info,
+                    status="FAILED_ALREADY_LOGGED_IN",
+                    reason="Concurrent login blocked - active Mandal session exists"
+                )
+                db.add(log)
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This Mandal account is already logged in on another device. Please logout from the existing device before attempting a new login."
+                )
+            else:
+                still_active.session_status = "TERMINATED"
+                still_active.logout_datetime = now
+                db.commit()
 
     # Reset failed attempts
     user.failed_attempts = 0
@@ -266,7 +262,7 @@ def get_current_user(
     if not user_session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session has been terminated or logged out from another device."
+            detail="Session has expired or been terminated. Please login again."
         )
         
     if user_session.last_activity < inactivity_cutoff:
