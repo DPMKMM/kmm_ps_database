@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, String
 
 from app.database import get_db
 from app.models import (
@@ -481,7 +481,7 @@ def get_gp_positions(
         query = query.filter(
             (GramPanchayat.gp_name.ilike(s)) |
             (GramPanchayat.mandal_name.ilike(s)) |
-            (func.cast(GramPanchayat.lgd_code, func.String).ilike(s))
+            (cast(GramPanchayat.lgd_code, String).ilike(s))
         )
         
     all_gps = query.order_by(GramPanchayat.mandal_name.asc(), GramPanchayat.gp_name.asc()).all()

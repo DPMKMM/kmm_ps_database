@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, String
 
 from app.database import get_db
 from app.models import Mandal, GramPanchayat, EmployeeSalaryMapping, EmployeePosting, EmployeeStatusHistory, User
@@ -57,7 +57,7 @@ def get_gram_panchayats(
         s = f"%{search.strip()}%"
         query = query.filter(
             (GramPanchayat.gp_name.ilike(s)) | 
-            (func.cast(GramPanchayat.lgd_code, func.String).ilike(s))
+            (cast(GramPanchayat.lgd_code, String).ilike(s))
         )
         
     gps = query.order_by(GramPanchayat.gp_name.asc()).all()
@@ -79,7 +79,7 @@ def get_all_centralized_panchayats(
         query = query.filter(
             (GramPanchayat.gp_name.ilike(s)) | 
             (GramPanchayat.mandal_name.ilike(s)) |
-            (func.cast(GramPanchayat.lgd_code, func.String).ilike(s))
+            (cast(GramPanchayat.lgd_code, String).ilike(s))
         )
     return query.order_by(GramPanchayat.mandal_name.asc(), GramPanchayat.gp_name.asc()).all()
 

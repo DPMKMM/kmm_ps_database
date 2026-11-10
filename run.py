@@ -4,9 +4,9 @@ import pathlib
 import importlib.abc
 import importlib.util
 
-# Ensure pure-Python mode for SQLAlchemy to avoid Windows AppControl policy blocking cython DLLs
-os.environ["DISABLE_SQLALCHEMY_CEXT"] = "1"
+# Ensure pure-Python mode for SQLAlchemy on Windows to avoid AppControl policy blocking cython DLLs
 if sys.platform == "win32":
+    os.environ["DISABLE_SQLALCHEMY_CEXT"] = "1"
     class _SqlAlchemyPurePythonFinder(importlib.abc.MetaPathFinder):
         def find_spec(self, fullname, path, target=None):
             if fullname.startswith("sqlalchemy.") and fullname.endswith("_cy") and path:
@@ -43,8 +43,9 @@ def main():
     print("1. District Super Admin (All 571 GPs & 20 Mandals):")
     print("   Username: admin")
     print("   Password: Admin@Khammam2026")
-    print("\n2. Mandal Admin Accounts (20 Mandals with Single Active Device Session Enforcement):")
-    print("   Examples: enkoor, kallur, sathupally, penubally, thallada, mudigonda, khammam_rural")
+    session_mode = "Multi-User Concurrent Sessions Enabled" if settings.ALLOW_MULTI_USER_SESSIONS else "Single Active Device Session Enforcement"
+    print(f"\n2. Mandal Admin Accounts (20 Mandals - {session_mode}):")
+    print("   Examples: enkoor, kallur, sathupally, penubally, thallada, mudigonda, khammamrural")
     print("   Passwords: Mandal@<Mandal_LGD>  (e.g. Mandal@5065 for Enkoor, Mandal@5069 for Kallur)")
     print("\n3. District Viewer (Collectorate Read-Only Access):")
     print("   Username: viewer")
@@ -52,21 +53,24 @@ def main():
     print("-" * 80)
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8080))
-    print(f"Starting Web Application Server at: http://{host}:{port} (Dual-Stack IPv4/IPv6 supported)")
+    print(f"Starting Web Application Server at: http://{host}:{port}")
     print("=" * 80)
-    
-    try:
-        import socket
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-        sock.bind(('::', port))
-        sock.listen(256)
-        config = uvicorn.Config("app.main:app", reload=False, access_log=True)
-        server = uvicorn.Server(config)
-        server.run(sockets=[sock])
-    except Exception as exc:
-        print(f"[!] Dual-stack bind fallback: {exc}")
-        uvicorn.run("app.main:app", host=host, port=port, reload=False)
+
+    if sys.platform == "win32":
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            sock.bind(('::', port))
+            sock.listen(256)
+            config = uvicorn.Config("app.main:app", reload=False, access_log=True, proxy_headers=True, forwarded_allow_ips="*")
+            server = uvicorn.Server(config)
+            server.run(sockets=[sock])
+        except Exception as exc:
+            print(f"[!] Dual-stack bind fallback: {exc}")
+            uvicorn.run("app.main:app", host=host, port=port, reload=False, proxy_headers=True, forwarded_allow_ips="*")
+    else:
+        uvicorn.run("app.main:app", host=host, port=port, reload=False, proxy_headers=True, forwarded_allow_ips="*")
 
 if __name__ == "__main__":
     main()

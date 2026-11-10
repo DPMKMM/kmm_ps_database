@@ -12,5 +12,14 @@ env
 test_app.py
 raw_user_employees.csv
 seed_user_data.py
+*.db
+*.db-journal
 *.db-shm
 *.db-wal
+*.exe
+cloudflared
+.env
+*.bat
+run_cloudflare_portal.py
+latest_public_url.txt
+deploy_guide.md
