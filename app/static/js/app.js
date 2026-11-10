@@ -46,6 +46,11 @@ function handleHashChange() {
 }
 
 function navigate(route) {
+  // Unified Stage 2 handles both Salary GP and Working Station Mapping
+  if (route === "stage3-working-mapping") {
+    route = "stage2-salary-mapping";
+  }
+
   // Mandal Admin cannot access District Reports (A-Z)
   if (currentUser && currentUser.role === "MANDAL_ADMIN" && route === "reports") {
     route = "mandal-reports";
@@ -476,10 +481,7 @@ async function renderDashboardView() {
           <i data-lucide="user-plus" class="w-3.5 h-3.5 mr-1.5"></i> Stage 1: Register PS
         </button>
         <button onclick="navigate('stage2-salary-mapping')" class="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
-          <i data-lucide="wallet" class="w-3.5 h-3.5 mr-1.5"></i> Stage 2: Salary Mapping
-        </button>
-        <button onclick="navigate('stage3-working-mapping')" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
-          <i data-lucide="map-pin" class="w-3.5 h-3.5 mr-1.5"></i> Stage 3: Working Station
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 mr-1.5"></i> Stage 2: Salary & Working Mapping
         </button>
         <button onclick="navigate('internal-reassignment')" class="px-3 py-1.5 bg-pink-700 hover:bg-pink-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
           <i data-lucide="shuffle" class="w-3.5 h-3.5 mr-1.5"></i> Internal Reassign
@@ -490,14 +492,14 @@ async function renderDashboardView() {
       </div>
     </div>
 
-    <!-- 3-STAGE ARCHITECTURE PIPELINE PROGRESS -->
+    <!-- 2-STAGE ARCHITECTURE PIPELINE PROGRESS -->
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">
       <div class="flex justify-between items-center mb-3">
         <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center">
           <i data-lucide="layers" class="w-4 h-4 mr-2 text-govblue-900"></i>
-          Three-Stage Data Architecture & Reassignment Pipeline
+          Two-Stage Data Architecture & Reassignment Pipeline
         </h3>
-        <span class="text-[10px] text-slate-500 font-medium">Independent Stages Verification Flow</span>
+        <span class="text-[10px] text-slate-500 font-medium">Unified Salary & Working Station Workflow</span>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="p-3 rounded-lg bg-amber-50/70 border border-amber-200 cursor-pointer hover:bg-amber-100 transition" onclick="navigate('stage1-employee-reg')">
@@ -516,9 +518,9 @@ async function renderDashboardView() {
           <div id="stat-stage2" class="text-xl font-bold text-teal-900 font-mono mt-1">-</div>
           <div class="text-[10px] text-teal-700 mt-0.5">Salary GP & Service Status</div>
         </div>
-        <div class="p-3 rounded-lg bg-indigo-50/70 border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition" onclick="navigate('stage3-working-mapping')">
+        <div class="p-3 rounded-lg bg-indigo-50/70 border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition" onclick="navigate('stage2-salary-mapping')">
           <div class="flex justify-between items-start">
-            <span class="text-[10px] font-bold text-indigo-800 uppercase">Stage 3: Working Mapped</span>
+            <span class="text-[10px] font-bold text-indigo-800 uppercase">Stage 2: Working Mapped</span>
             <span class="p-1 rounded bg-indigo-200 text-indigo-900"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i></span>
           </div>
           <div id="stat-stage3" class="text-xl font-bold text-indigo-900 font-mono mt-1">-</div>
@@ -1127,32 +1129,28 @@ async function renderStage1EmployeeRegView() {
         <div class="flex flex-wrap justify-between items-center gap-3">
           <div>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 mb-1">
-              <i data-lucide="layers" class="w-3.5 h-3.5 mr-1"></i> STAGE 1 OF 3 • ARCHITECTURAL WORKFLOW
+              <i data-lucide="layers" class="w-3.5 h-3.5 mr-1"></i> STAGE 1 OF 2 • ARCHITECTURAL WORKFLOW
             </span>
             <h2 class="text-xl font-bold text-slate-900">Stage 1: Employee Master Registration</h2>
             <p class="text-xs text-slate-500">Register Panchayat Secretary employee records with global uniqueness validation across all 20 Mandals. No GP mapping required at this stage.</p>
           </div>
           <div class="flex items-center space-x-2">
             <button onclick="navigate('stage2-salary-mapping')" class="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
-              <span>Go to Stage 2: Salary Mapping</span>
+              <span>Go to Stage 2: Salary & Working Mapping</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
             </button>
           </div>
         </div>
 
         <!-- Progress Steps -->
-        <div class="mt-4 pt-4 border-t border-slate-200 grid grid-cols-3 gap-2 text-center text-xs">
+        <div class="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-2 text-center text-xs">
           <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-300 font-bold text-amber-900 flex items-center justify-center">
             <span class="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px] mr-2">1</span>
             Stage 1: Employee Registration (Active)
           </div>
           <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center cursor-pointer hover:bg-slate-100" onclick="navigate('stage2-salary-mapping')">
             <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] mr-2">2</span>
-            Stage 2: Salary GP Mapping
-          </div>
-          <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center cursor-pointer hover:bg-slate-100" onclick="navigate('stage3-working-mapping')">
-            <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] mr-2">3</span>
-            Stage 3: Working Station
+            Stage 2: Salary GP & Working Station Mapping
           </div>
         </div>
       </div>
@@ -1250,7 +1248,7 @@ async function renderStage1EmployeeRegView() {
         <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
           <div>
             <h3 class="font-bold text-slate-800 text-sm">Registered Panchayat Secretaries</h3>
-            <p class="text-[11px] text-slate-500">Live list of registered employees and their Stage 2 / Stage 3 completion indicators.</p>
+            <p class="text-[11px] text-slate-500">Live list of registered employees and their Salary GP & Working Station completion status.</p>
           </div>
           <div class="flex items-center space-x-2">
             <button onclick="loadStage1EmployeesList()" class="px-3 py-1 bg-white border border-slate-300 rounded text-xs font-semibold hover:bg-slate-100 flex items-center">
@@ -1269,8 +1267,8 @@ async function renderStage1EmployeeRegView() {
                 <th class="px-3.5 py-3">Mobile No</th>
                 <th class="px-3.5 py-3">Designation</th>
                 <th class="px-3.5 py-3">Reg. Mandal</th>
-                <th class="px-3.5 py-3 text-center">Stage 2 (Salary GP)</th>
-                <th class="px-3.5 py-3 text-center">Stage 3 (Working Station)</th>
+                <th class="px-3.5 py-3 text-center">Salary GP</th>
+                <th class="px-3.5 py-3 text-center">Working Station</th>
                 <th class="px-3.5 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -1351,22 +1349,15 @@ async function handleStage1RegisterSubmit(e) {
       body: JSON.stringify(payload)
     });
 
-    alert(`Stage 1 Registration Successful!\nEmployee ID: ${res.employee_id}\nName: ${res.name_ifmis}\nYou can now proceed to Stage 2: Salary GP Mapping.`);
+    alert(`Stage 1 Registration Successful!\nEmployee ID: ${res.employee_id}\nName: ${res.name_ifmis}\nYou can now proceed to Stage 2: Salary GP & Working Station Mapping.`);
     document.getElementById("stage1-reg-form").reset();
     document.getElementById("stage1-id-feedback").classList.add("hidden");
     document.getElementById("stage1-id-icon").classList.add("hidden");
     loadStage1EmployeesList();
 
-    // Offer instant jump to Stage 2
-    if (confirm(`Do you want to map Salary Claiming GP for ${res.name_ifmis} (${res.employee_id}) right now?`)) {
-      navigate("stage2-salary-mapping");
-      setTimeout(() => {
-        const empSelect = document.getElementById("stage2-emp-select");
-        if (empSelect) {
-          empSelect.value = res.employee_id;
-          handleStage2EmpSelect({ target: empSelect });
-        }
-      }, 300);
+    // Offer instant jump to Stage 2 Combined Mapping
+    if (confirm(`Do you want to map Salary GP & Working Station for ${res.name_ifmis} (${res.employee_id}) right now?`)) {
+      proceedToStage2(res.employee_id);
     }
 
   } catch (err) {
@@ -1395,11 +1386,11 @@ async function loadStage1EmployeesList() {
     cachedStage1Employees.forEach((emp, idx) => {
       const s2Badge = emp.salary_mapped
         ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800">Mapped: ${emp.salary_gp_name || ''}</span>`
-        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Pending Stage 2</span>`;
+        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Pending</span>`;
 
       const s3Badge = emp.working_mapped
         ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">Confirmed: ${emp.working_gp_name || ''}</span>`
-        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Pending Stage 3</span>`;
+        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Pending</span>`;
 
       rowsHtml += `
         <tr class="hover:bg-slate-50">
@@ -1412,8 +1403,8 @@ async function loadStage1EmployeesList() {
           <td class="px-3.5 py-2.5 text-center">${s2Badge}</td>
           <td class="px-3.5 py-2.5 text-center">${s3Badge}</td>
           <td class="px-3.5 py-2.5 text-right space-x-1">
-            <button onclick="proceedToStage2('${emp.employee_id}')" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-[11px] font-semibold transition" title="Map Salary GP">
-              Map Salary GP →
+            <button onclick="proceedToStage2('${emp.employee_id}')" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-[11px] font-semibold transition" title="Map Salary GP & Working Station">
+              Map Salary & Station →
             </button>
           </td>
         </tr>
@@ -1427,23 +1418,22 @@ async function loadStage1EmployeesList() {
   }
 }
 
+let pendingStage2EmpId = null;
+
 function proceedToStage2(empId) {
+  pendingStage2EmpId = empId;
   navigate("stage2-salary-mapping");
-  setTimeout(() => {
-    const empSelect = document.getElementById("stage2-emp-select");
-    if (empSelect) {
-      empSelect.value = empId;
-      handleStage2EmpSelect({ target: empSelect });
-    }
-  }, 250);
 }
 
 // ==========================================
-// 2B. STAGE 2: SALARY-CLAIMING GP MAPPING
+// 2B. STAGE 2 (COMBINED): SALARY GP, STATUS & WORKING STATION MAPPING
 // ==========================================
 async function renderStage2SalaryMappingView(preselectedEmpId = null) {
   const container = document.getElementById("view-stage2-salary-mapping");
   if (!container) return;
+
+  const targetEmpId = preselectedEmpId || pendingStage2EmpId;
+  pendingStage2EmpId = null;
 
   let employees = [];
   let mandalGps = [];
@@ -1463,13 +1453,18 @@ async function renderStage2SalaryMappingView(preselectedEmpId = null) {
     const empId = e.employee_id || e.id;
     const empName = e.name_ifmis || e.name || '';
     const empMobile = e.mobile_number || e.mobile || '';
-    const isSel = (preselectedEmpId && empId === preselectedEmpId) ? "selected" : "";
+    const isSel = (targetEmpId && empId === targetEmpId) ? "selected" : "";
     empOptions += `<option value="${empId}" data-name="${empName}" data-mobile="${empMobile}" ${isSel}>${e.display_label || (empName + ' - ' + empId)}</option>`;
   });
 
   let gpOptions = `<option value="">-- Select Authorized Salary GP --</option>`;
   mandalGps.forEach(g => {
     gpOptions += `<option value="${g.lgd_code}" data-name="${g.gp_name}" data-mandal="${g.mandal_name}" data-mandal-id="${g.mandal_id}">${g.gp_name} (LGD: ${g.lgd_code})</option>`;
+  });
+
+  let otherMandalOptions = `<option value="">-- Select Destination Mandal --</option>`;
+  cachedMandals.forEach(m => {
+    otherMandalOptions += `<option value="${m.id}">${m.mandal_name} (LGD: ${m.mandal_lgd})</option>`;
   });
 
   container.innerHTML = `
@@ -1480,35 +1475,31 @@ async function renderStage2SalaryMappingView(preselectedEmpId = null) {
         <div class="flex flex-wrap justify-between items-center gap-3">
           <div>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-100 text-teal-900 border border-teal-300 mb-1">
-              <i data-lucide="layers" class="w-3.5 h-3.5 mr-1"></i> STAGE 2 OF 3 • ARCHITECTURAL WORKFLOW
+              <i data-lucide="layers" class="w-3.5 h-3.5 mr-1"></i> STAGE 2 OF 2 • COMBINED MAPPING WORKFLOW
             </span>
-            <h2 class="text-xl font-bold text-slate-900">Stage 2: Salary-Claiming GP Mapping</h2>
-            <p class="text-xs text-slate-500">Map registered Panchayat Secretaries to authorized salary-claiming Gram Panchayats and record initial employment status.</p>
+            <h2 class="text-xl font-bold text-slate-900">Stage 2: Salary GP, Status & Working Station Mapping</h2>
+            <p class="text-xs text-slate-500">Map salary-claiming Gram Panchayat, service status, and working station / deputation details in one unified step.</p>
           </div>
           <div class="flex items-center space-x-2">
             <button onclick="navigate('stage1-employee-reg')" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-semibold flex items-center transition">
               <i data-lucide="arrow-left" class="w-3.5 h-3.5 mr-1"></i> Back to Stage 1
             </button>
-            <button onclick="navigate('stage3-working-mapping')" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
-              <span>Go to Stage 3: Working Station</span>
+            <button onclick="navigate('reconciliation-report')" class="px-3 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
+              <span>View 22-Col Master Report</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
             </button>
           </div>
         </div>
 
         <!-- Progress Steps -->
-        <div class="mt-4 pt-4 border-t border-slate-200 grid grid-cols-3 gap-2 text-center text-xs">
+        <div class="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-2 text-center text-xs">
           <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 font-semibold flex items-center justify-center cursor-pointer" onclick="navigate('stage1-employee-reg')">
             <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] mr-2">✓</span>
-            Stage 1: Employee Reg (Done)
+            Stage 1: Employee Registration (Done)
           </div>
           <div class="p-2.5 rounded-lg bg-teal-50 border border-teal-400 font-bold text-teal-900 flex items-center justify-center">
             <span class="w-5 h-5 rounded-full bg-teal-700 text-white flex items-center justify-center text-[10px] mr-2">2</span>
-            Stage 2: Salary GP Mapping (Active)
-          </div>
-          <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center cursor-pointer hover:bg-slate-100" onclick="navigate('stage3-working-mapping')">
-            <span class="w-5 h-5 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] mr-2">3</span>
-            Stage 3: Working Station
+            Stage 2: Salary & Working Mapping (Active)
           </div>
         </div>
       </div>
@@ -1635,15 +1626,151 @@ async function renderStage2SalaryMappingView(preselectedEmpId = null) {
             </div>
 
             <div>
-              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Remarks / Justification</label>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Salary / Status Remarks</label>
               <input type="text" id="stage2-remarks" placeholder="Optional remarks regarding salary claiming mapping..." class="w-full p-1.5 border border-slate-300 rounded outline-none">
+            </div>
+          </div>
+
+          <!-- PART B: WORKING STATION & DEPUTATION MAPPING -->
+          <div class="p-4 bg-indigo-50/40 rounded-lg border border-indigo-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-indigo-200 pb-2">
+              <h4 class="font-bold text-indigo-950 text-xs uppercase tracking-wider flex items-center">
+                <i data-lucide="map-pin" class="w-4 h-4 mr-1.5 text-indigo-700"></i>
+                Present Working Station & Deputation Details
+              </h4>
+              <span class="text-[10px] font-semibold text-indigo-700">Combined into Stage 2</span>
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-800 uppercase mb-2 text-xs">
+                Is Employee Presently Working in their Salary-Claiming GP? <span class="text-rose-600">*</span>
+              </label>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="flex items-center p-3 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-400 transition">
+                  <input type="radio" name="stage2-working-same" value="YES" checked onchange="handleStage2WorkingSameChange(event)" class="w-4 h-4 text-indigo-600">
+                  <div class="ml-2.5">
+                    <div class="font-bold text-slate-800">YES — Working in Salary GP</div>
+                    <div class="text-[11px] text-slate-500">Regular active duty in their own salary-claiming Gram Panchayat.</div>
+                  </div>
+                </label>
+                <label class="flex items-center p-3 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-400 transition">
+                  <input type="radio" name="stage2-working-same" value="NO" onchange="handleStage2WorkingSameChange(event)" class="w-4 h-4 text-indigo-600">
+                  <div class="ml-2.5">
+                    <div class="font-bold text-slate-800">NO — Deputed Elsewhere</div>
+                    <div class="text-[11px] text-slate-500">Working in another GP, other Mandal, District, or Department.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Deputation Details Section (Shown when Working Same == NO) -->
+            <div id="stage2-deputation-panel" class="hidden p-4 bg-amber-50/70 rounded-lg border border-amber-300 space-y-4">
+              <h4 class="font-bold text-amber-950 text-xs uppercase tracking-wider flex items-center">
+                <i data-lucide="git-branch" class="w-4 h-4 mr-1.5 text-amber-700"></i>
+                Official Deputation Assignment & Proceedings Details
+              </h4>
+
+              <div>
+                <label class="block font-bold text-slate-800 uppercase mb-1">
+                  Deputation Location Type <span class="text-rose-600">*</span>
+                </label>
+                <select id="stage2-posting-type" onchange="handleStage2PostingTypeChange(event)" class="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-700 bg-white outline-none font-semibold text-slate-800">
+                  <option value="WITHIN_MANDAL">Deputation Within Same Mandal</option>
+                  <option value="ANOTHER_MANDAL">Deputation to Another Mandal in Khammam</option>
+                  <option value="OTHER_DISTRICT">Deputation to Other District</option>
+                  <option value="OTHER_DEPARTMENT">Deputation to Other Department</option>
+                </select>
+              </div>
+
+              <!-- Destination: Within Same Mandal -->
+              <div id="stage2-dest-same-mandal" class="space-y-1">
+                <label class="block font-bold text-slate-800 uppercase mb-1">
+                  Destination Gram Panchayat (Same Mandal) <span class="text-rose-600">*</span>
+                </label>
+                <select id="stage2-same-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+                  <option value="">-- Select Salary GP First to Load Mandal GPs --</option>
+                </select>
+              </div>
+
+              <!-- Destination: Another Mandal -->
+              <div id="stage2-dest-another-mandal" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    Destination Mandal <span class="text-rose-600">*</span>
+                  </label>
+                  <select id="stage2-another-mandal-select" onchange="handleStage2DestMandalChange(event)" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+                    ${otherMandalOptions}
+                  </select>
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    Destination Gram Panchayat <span class="text-rose-600">*</span>
+                  </label>
+                  <select id="stage2-another-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+                    <option value="">-- Select Mandal First --</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Destination: Other District -->
+              <div id="stage2-dest-other-dist" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    External District Name <span class="text-rose-600">*</span>
+                  </label>
+                  <input type="text" id="stage2-other-dist-name" placeholder="e.g. Bhadradri Kothagudem, Warangal..." class="w-full p-2 border border-slate-300 rounded outline-none">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    Destination Office / Gram Panchayat
+                  </label>
+                  <input type="text" id="stage2-other-dist-office" placeholder="Office / Gram Panchayat Name..." class="w-full p-2 border border-slate-300 rounded outline-none">
+                </div>
+              </div>
+
+              <!-- Destination: Other Department -->
+              <div id="stage2-dest-other-dept" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    Department Name <span class="text-rose-600">*</span>
+                  </label>
+                  <input type="text" id="stage2-other-dept-name" placeholder="e.g. Collectorate, DRDO, Zilla Praja Parishad..." class="w-full p-2 border border-slate-300 rounded outline-none">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">
+                    Designation / Assigned Office
+                  </label>
+                  <input type="text" id="stage2-other-dept-office" placeholder="Office Name / Position..." class="w-full p-2 border border-slate-300 rounded outline-none">
+                </div>
+              </div>
+
+              <!-- Order / Proceedings Information -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-amber-200">
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">Deputation Order Number</label>
+                  <input type="text" id="stage2-dep-order-no" placeholder="Proceedings Order No..." class="w-full p-1.5 border border-slate-300 rounded outline-none">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">Deputation Order Date</label>
+                  <input type="date" id="stage2-dep-order-date" class="w-full p-1.5 border border-slate-300 rounded outline-none bg-white">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 uppercase mb-1">Deputation Effective From</label>
+                  <input type="date" id="stage2-dep-effective-date" class="w-full p-1.5 border border-slate-300 rounded outline-none bg-white">
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1">Deputation Remarks</label>
+                <input type="text" id="stage2-dep-remarks" placeholder="Provide any additional order notes or remarks..." class="w-full p-1.5 border border-slate-300 rounded outline-none">
+              </div>
             </div>
           </div>
 
           <!-- Submit Buttons -->
           <div class="pt-3 border-t border-slate-200 flex justify-end space-x-3">
             <button type="submit" id="stage2-submit-btn" class="px-5 py-2.5 bg-teal-800 hover:bg-teal-900 text-white font-bold rounded shadow transition flex items-center">
-              <i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Salary Mapping (Stage 2)
+              <i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Salary & Working Mapping (Stage 2)
             </button>
           </div>
 
@@ -1654,19 +1781,83 @@ async function renderStage2SalaryMappingView(preselectedEmpId = null) {
   `;
   lucide.createIcons();
 
-  if (preselectedEmpId) {
+  // Populate Same Mandal GPs immediately for default Mandal if logged in as Mandal Admin
+  if (currentUser && currentUser.mandal_id) {
+    populateStage2SameMandalGPs(currentUser.mandal_id, currentUser.mandal_name || "Mandal");
+  }
+
+  if (targetEmpId) {
     const sel = document.getElementById("stage2-emp-select");
     if (sel) {
-      sel.value = preselectedEmpId;
+      sel.value = targetEmpId;
       handleStage2EmpSelect({ target: sel });
     }
   }
 }
 
-function handleStage2EmpSelect(e) {
+function populateStage2SameMandalGPs(mandalId, mandalName = "") {
+  const gpSelect = document.getElementById("stage2-same-mandal-gp");
+  if (!gpSelect || !mandalId) return;
+  const mandalGps = centralizedPanchayats.filter(gp => gp.mandal_id === parseInt(mandalId));
+  let sameOptions = `<option value="">-- Select Destination GP in ${mandalName || 'Mandal'} --</option>`;
+  mandalGps.forEach(g => {
+    sameOptions += `<option value="${g.lgd_code}">${g.gp_name} (LGD: ${g.lgd_code})</option>`;
+  });
+  gpSelect.innerHTML = sameOptions;
+}
+
+function resetStage2MappingFields() {
+  const salGpSel = document.getElementById("stage2-salary-gp");
+  if (salGpSel) {
+    salGpSel.value = "";
+    handleStage2SalaryGPChange({ target: salGpSel });
+  }
+  const salStatus = document.getElementById("stage2-salary-status");
+  if (salStatus) salStatus.value = "YES";
+  const effDate = document.getElementById("stage2-effective-date");
+  if (effDate) effDate.value = "";
+
+  const statusSel = document.getElementById("stage2-service-status");
+  if (statusSel) {
+    statusSel.value = "WORKING";
+    handleStage2ServiceStatusChange({ target: statusSel });
+  }
+  const orderNo = document.getElementById("stage2-order-no");
+  if (orderNo) orderNo.value = "";
+  const orderDate = document.getElementById("stage2-order-date");
+  if (orderDate) orderDate.value = "";
+  const remarks = document.getElementById("stage2-remarks");
+  if (remarks) remarks.value = "";
+
+  const yesRadio = document.querySelector('input[name="stage2-working-same"][value="YES"]');
+  if (yesRadio) {
+    yesRadio.checked = true;
+    handleStage2WorkingSameChange({ target: yesRadio });
+  }
+  const pTypeSel = document.getElementById("stage2-posting-type");
+  if (pTypeSel) {
+    pTypeSel.value = "WITHIN_MANDAL";
+    handleStage2PostingTypeChange({ target: pTypeSel });
+  }
+  const sameMandalGp = document.getElementById("stage2-same-mandal-gp");
+  if (sameMandalGp) sameMandalGp.value = "";
+  const anotherMandalSel = document.getElementById("stage2-another-mandal-select");
+  if (anotherMandalSel) anotherMandalSel.value = "";
+  const anotherMandalGp = document.getElementById("stage2-another-mandal-gp");
+  if (anotherMandalGp) anotherMandalGp.innerHTML = `<option value="">-- Select Mandal First --</option>`;
+
+  ["stage2-other-dist-name", "stage2-other-dist-office", "stage2-other-dept-name", "stage2-other-dept-office", "stage2-dep-order-no", "stage2-dep-order-date", "stage2-dep-effective-date", "stage2-dep-remarks"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+}
+
+async function handleStage2EmpSelect(e) {
   const sel = e.target;
   const opt = sel.options[sel.selectedIndex];
   const card = document.getElementById("stage2-emp-card");
+  resetStage2MappingFields();
+
   if (!sel.value || !opt) {
     if (card) card.classList.add("hidden");
     return;
@@ -1675,6 +1866,80 @@ function handleStage2EmpSelect(e) {
   document.getElementById("stage2-card-mobile").textContent = opt.getAttribute("data-mobile") || "N/A";
   document.getElementById("stage2-card-id").textContent = sel.value;
   card.classList.remove("hidden");
+
+  // Fetch existing Stage 2 + Working Station data to pre-fill form if already mapped
+  try {
+    const info = await fetchAPI(`/employees/stage3-employee-info/${encodeURIComponent(sel.value)}`);
+    if (info) {
+      if (info.name_ifmis) document.getElementById("stage2-card-name").textContent = info.name_ifmis;
+      if (info.mobile_number) document.getElementById("stage2-card-mobile").textContent = info.mobile_number;
+
+      const salGpSel = document.getElementById("stage2-salary-gp");
+      if (info.salary_gp_lgd && salGpSel) {
+        salGpSel.value = String(info.salary_gp_lgd);
+        handleStage2SalaryGPChange({ target: salGpSel });
+      }
+      if (info.salary_claiming_status) {
+        document.getElementById("stage2-salary-status").value = info.salary_claiming_status;
+      }
+      document.getElementById("stage2-effective-date").value = info.working_from_date || "";
+
+      const statusSel = document.getElementById("stage2-service-status");
+      if (info.service_status && statusSel) {
+        statusSel.value = info.service_status;
+        handleStage2ServiceStatusChange({ target: statusSel });
+      }
+      document.getElementById("stage2-order-no").value = info.status_order_no || "";
+      document.getElementById("stage2-order-date").value = info.status_order_date || "";
+      document.getElementById("stage2-remarks").value = info.status_remarks || "";
+
+      if (info.current_posting) {
+        const cp = info.current_posting;
+        const radioVal = cp.is_working_in_salary_gp ? "YES" : "NO";
+        const radioEl = document.querySelector(`input[name="stage2-working-same"][value="${radioVal}"]`);
+        if (radioEl) {
+          radioEl.checked = true;
+          handleStage2WorkingSameChange({ target: radioEl });
+        }
+
+        if (!cp.is_working_in_salary_gp) {
+          const pTypeSel = document.getElementById("stage2-posting-type");
+          const resolvedType = (cp.posting_type && cp.posting_type !== "OWN_GP") ? cp.posting_type : "WITHIN_MANDAL";
+          pTypeSel.value = resolvedType;
+          handleStage2PostingTypeChange({ target: pTypeSel });
+
+          if (resolvedType === "WITHIN_MANDAL") {
+            if (info.salary_mandal_id) {
+              populateStage2SameMandalGPs(info.salary_mandal_id, info.salary_mandal_name || "Mandal");
+            }
+            if (cp.actual_working_gp_lgd) {
+              document.getElementById("stage2-same-mandal-gp").value = String(cp.actual_working_gp_lgd);
+            }
+          } else if (resolvedType === "ANOTHER_MANDAL" && cp.actual_working_mandal_id) {
+            const mSel = document.getElementById("stage2-another-mandal-select");
+            mSel.value = String(cp.actual_working_mandal_id);
+            handleStage2DestMandalChange({ target: mSel });
+            if (cp.actual_working_gp_lgd) {
+              document.getElementById("stage2-another-mandal-gp").value = String(cp.actual_working_gp_lgd);
+            }
+          } else if (resolvedType === "OTHER_DISTRICT") {
+            document.getElementById("stage2-other-dist-name").value = cp.external_district_name || "";
+            document.getElementById("stage2-other-dist-office").value = cp.external_gp_or_office_name || "";
+          } else if (resolvedType === "OTHER_DEPARTMENT") {
+            document.getElementById("stage2-other-dept-name").value = cp.external_department_name || "";
+            document.getElementById("stage2-other-dept-office").value = cp.external_gp_or_office_name || "";
+          }
+
+          document.getElementById("stage2-dep-order-no").value = cp.deputation_order_no || "";
+          document.getElementById("stage2-dep-order-date").value = cp.deputation_order_date || "";
+          document.getElementById("stage2-dep-effective-date").value = cp.deputation_effective_from || "";
+          document.getElementById("stage2-dep-remarks").value = cp.remarks || "";
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Could not prefill Stage 2 existing mapping info", err);
+  }
 }
 
 function handleStage2SalaryGPChange(e) {
@@ -1688,8 +1953,13 @@ function handleStage2SalaryGPChange(e) {
     lgdDisp.textContent = "LGD Code: -";
     return;
   }
-  mandalDisp.textContent = opt.getAttribute("data-mandal") || "-";
+  const mName = opt.getAttribute("data-mandal") || "-";
+  const mId = opt.getAttribute("data-mandal-id");
+  mandalDisp.textContent = mName;
   lgdDisp.textContent = `LGD Code: ${sel.value}`;
+  if (mId) {
+    populateStage2SameMandalGPs(mId, mName);
+  }
 }
 
 function handleStage2ServiceStatusChange(e) {
@@ -1733,13 +2003,83 @@ function handleStage2ServiceStatusChange(e) {
   }
 }
 
+function handleStage2WorkingSameChange(e) {
+  const isSame = e.target.value === "YES";
+  const depPanel = document.getElementById("stage2-deputation-panel");
+  if (depPanel) {
+    depPanel.classList.toggle("hidden", isSame);
+  }
+}
+
+function handleStage2PostingTypeChange(e) {
+  const type = e.target.value;
+  document.getElementById("stage2-dest-same-mandal").classList.toggle("hidden", type !== "WITHIN_MANDAL");
+  document.getElementById("stage2-dest-another-mandal").classList.toggle("hidden", type !== "ANOTHER_MANDAL");
+  document.getElementById("stage2-dest-other-dist").classList.toggle("hidden", type !== "OTHER_DISTRICT");
+  document.getElementById("stage2-dest-other-dept").classList.toggle("hidden", type !== "OTHER_DEPARTMENT");
+}
+
+function handleStage2DestMandalChange(e) {
+  const mId = parseInt(e.target.value);
+  const gpSelect = document.getElementById("stage2-another-mandal-gp");
+  if (!mId) {
+    gpSelect.innerHTML = `<option value="">-- Select Mandal First --</option>`;
+    return;
+  }
+  const destGps = centralizedPanchayats.filter(g => g.mandal_id === mId);
+  let optHtml = `<option value="">-- Select Destination GP --</option>`;
+  destGps.forEach(g => {
+    optHtml += `<option value="${g.lgd_code}">${g.gp_name} (LGD: ${g.lgd_code})</option>`;
+  });
+  gpSelect.innerHTML = optHtml;
+}
+
 async function handleStage2SalarySubmit(e) {
   e.preventDefault();
   const empId = document.getElementById("stage2-emp-select").value;
   const gpLgd = parseInt(document.getElementById("stage2-salary-gp").value);
   if (!empId || !gpLgd) {
-    alert("Please select both Employee and Salary Claiming Gram Panchayat.");
+    alert("Please select both Employee and Salary-Claiming Gram Panchayat.");
     return;
+  }
+
+  const isWorkingSame = document.querySelector('input[name="stage2-working-same"]:checked').value === "YES";
+  const postingType = isWorkingSame ? "OWN_GP" : document.getElementById("stage2-posting-type").value;
+
+  let actualWorkingLgd = null;
+  let extDist = null;
+  let extMandal = null;
+  let extOffice = null;
+  let extDept = null;
+
+  if (isWorkingSame) {
+    actualWorkingLgd = gpLgd;
+  } else if (postingType === "WITHIN_MANDAL") {
+    actualWorkingLgd = parseInt(document.getElementById("stage2-same-mandal-gp").value);
+    if (!actualWorkingLgd) {
+      alert("Please select the Destination Gram Panchayat in the same Mandal.");
+      return;
+    }
+  } else if (postingType === "ANOTHER_MANDAL") {
+    actualWorkingLgd = parseInt(document.getElementById("stage2-another-mandal-gp").value);
+    if (!actualWorkingLgd) {
+      alert("Please select the Destination Gram Panchayat in the destination Mandal.");
+      return;
+    }
+  } else if (postingType === "OTHER_DISTRICT") {
+    extDist = document.getElementById("stage2-other-dist-name").value.trim();
+    extOffice = document.getElementById("stage2-other-dist-office").value.trim();
+    if (!extDist) {
+      alert("Please provide the External District Name.");
+      return;
+    }
+  } else if (postingType === "OTHER_DEPARTMENT") {
+    extDept = document.getElementById("stage2-other-dept-name").value.trim();
+    extOffice = document.getElementById("stage2-other-dept-office").value.trim();
+    if (!extDept) {
+      alert("Please provide the External Department Name.");
+      return;
+    }
   }
 
   const submitBtn = document.getElementById("stage2-submit-btn");
@@ -1755,404 +2095,7 @@ async function handleStage2SalarySubmit(e) {
     service_status: document.getElementById("stage2-service-status").value,
     status_order_no: document.getElementById("stage2-order-no").value || null,
     status_order_date: document.getElementById("stage2-order-date").value || null,
-    remarks: document.getElementById("stage2-remarks").value || null
-  };
-
-  try {
-    const res = await fetchAPI("/employees/stage2-salary-mapping", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-
-    alert(`Stage 2 Salary Mapping Saved!\nEmployee ${empId} mapped to Salary GP: ${res.salary_gp_name} (${res.salary_mandal_name}).`);
-
-    if (confirm("Proceed to Stage 3: Working Station & Deputation Mapping now?")) {
-      navigate("stage3-working-mapping");
-      setTimeout(() => {
-        const sel3 = document.getElementById("stage3-emp-select");
-        if (sel3) {
-          sel3.value = empId;
-          handleStage3EmpSelect({ target: sel3 });
-        }
-      }, 250);
-    } else {
-      renderStage2SalaryMappingView();
-    }
-
-  } catch (err) {
-    alert("Salary Mapping Failed: " + (err.detail || JSON.stringify(err)));
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Salary Mapping (Stage 2)`;
-    lucide.createIcons();
-  }
-}
-
-// ==========================================
-// 2C. STAGE 3: WORKING STATION & DEPUTATION
-// ==========================================
-async function renderStage3WorkingMappingView(preselectedEmpId = null) {
-  const container = document.getElementById("view-stage3-working-mapping");
-  if (!container) return;
-
-  let employees = [];
-  try {
-    employees = await fetchAPI("/employees/dropdown-list");
-  } catch (err) {
-    console.error("Error fetching employees", err);
-  }
-
-  let empOptions = `<option value="">-- Select Panchayat Secretary --</option>`;
-  (employees || []).forEach(e => {
-    const empId = e.employee_id || e.id;
-    const isSel = (preselectedEmpId && empId === preselectedEmpId) ? "selected" : "";
-    empOptions += `<option value="${empId}" ${isSel}>${e.display_label || (e.name_ifmis + ' - ' + empId)}</option>`;
-  });
-
-  // Other Mandals dropdown
-  let otherMandalOptions = `<option value="">-- Select Destination Mandal --</option>`;
-  cachedMandals.forEach(m => {
-    otherMandalOptions += `<option value="${m.id}">${m.mandal_name} (LGD: ${m.mandal_lgd})</option>`;
-  });
-
-  container.innerHTML = `
-    <div class="max-w-4xl mx-auto space-y-6">
-      
-      <!-- Stage 3 Header with Progress -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 border-t-4 border-indigo-600">
-        <div class="flex flex-wrap justify-between items-center gap-3">
-          <div>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-300 mb-1">
-              <i data-lucide="layers" class="w-3.5 h-3.5 mr-1"></i> STAGE 3 OF 3 • ARCHITECTURAL WORKFLOW
-            </span>
-            <h2 class="text-xl font-bold text-slate-900">Stage 3: Working Station & Deputation Mapping</h2>
-            <p class="text-xs text-slate-500">Verify whether the Panchayat Secretary works in their own salary GP or on deputation to another GP, Mandal, District, or Department.</p>
-          </div>
-          <div class="flex items-center space-x-2">
-            <button onclick="navigate('stage2-salary-mapping')" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-semibold flex items-center transition">
-              <i data-lucide="arrow-left" class="w-3.5 h-3.5 mr-1"></i> Back to Stage 2
-            </button>
-            <button onclick="navigate('reconciliation-report')" class="px-3 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
-              <span>View 22-Col Master Report</span>
-              <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-1"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- Progress Steps -->
-        <div class="mt-4 pt-4 border-t border-slate-200 grid grid-cols-3 gap-2 text-center text-xs">
-          <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 font-semibold flex items-center justify-center cursor-pointer" onclick="navigate('stage1-employee-reg')">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] mr-2">✓</span>
-            Stage 1: Reg (Done)
-          </div>
-          <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 font-semibold flex items-center justify-center cursor-pointer" onclick="navigate('stage2-salary-mapping')">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] mr-2">✓</span>
-            Stage 2: Salary Mapped (Done)
-          </div>
-          <div class="p-2.5 rounded-lg bg-indigo-50 border border-indigo-400 font-bold text-indigo-900 flex items-center justify-center">
-            <span class="w-5 h-5 rounded-full bg-indigo-700 text-white flex items-center justify-center text-[10px] mr-2">3</span>
-            Stage 3: Working Station (Active)
-          </div>
-        </div>
-      </div>
-
-      <!-- Mapping Form -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <form id="stage3-form" onsubmit="handleStage3WorkingSubmit(event)" class="space-y-5 text-xs text-slate-700">
-          
-          <!-- Employee Selection -->
-          <div class="p-4 bg-slate-50 rounded-lg border border-slate-200">
-            <label class="block font-bold text-slate-800 uppercase mb-1">
-              Select Panchayat Secretary <span class="text-rose-600">*</span>
-            </label>
-            <select id="stage3-emp-select" required onchange="handleStage3EmpSelect(event)" class="w-full p-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-700 font-semibold text-slate-800 bg-white outline-none">
-              ${empOptions}
-            </select>
-
-            <!-- Auto-populated Info Card -->
-            <div id="stage3-info-card" class="hidden mt-3 p-3.5 bg-white rounded-lg border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-3 shadow-sm">
-              <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Employee Name</span>
-                <span id="stage3-info-name" class="font-bold text-slate-900">-</span>
-              </div>
-              <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Mobile Number</span>
-                <span id="stage3-info-mobile" class="font-mono text-slate-700">-</span>
-              </div>
-              <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Salary Claiming GP</span>
-                <span id="stage3-info-sal-gp" class="font-bold text-teal-800">-</span>
-              </div>
-              <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Service Status</span>
-                <span id="stage3-info-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">WORKING</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Working in Salary GP Question -->
-          <div class="p-4 bg-slate-50 rounded-lg border border-slate-200">
-            <label class="block font-bold text-slate-800 uppercase mb-2 text-xs">
-              Is Employee Presently Working in their Salary-Claiming GP? <span class="text-rose-600">*</span>
-            </label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label class="flex items-center p-3 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-400 transition">
-                <input type="radio" name="stage3-working-same" value="YES" checked onchange="handleStage3WorkingSameChange(event)" class="w-4 h-4 text-indigo-600">
-                <div class="ml-2.5">
-                  <div class="font-bold text-slate-800">YES — Working in Salary GP</div>
-                  <div class="text-[11px] text-slate-500">Regular active duty in their own salary-claiming Gram Panchayat.</div>
-                </div>
-              </label>
-              <label class="flex items-center p-3 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-400 transition">
-                <input type="radio" name="stage3-working-same" value="NO" onchange="handleStage3WorkingSameChange(event)" class="w-4 h-4 text-indigo-600">
-                <div class="ml-2.5">
-                  <div class="font-bold text-slate-800">NO — Deputed Elsewhere</div>
-                  <div class="text-[11px] text-slate-500">Working in another GP, other Mandal, District, or Department.</div>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Deputation Details Section (Shown when Working Same == NO) -->
-          <div id="stage3-deputation-panel" class="hidden p-4 bg-amber-50/60 rounded-lg border border-amber-300 space-y-4">
-            <h4 class="font-bold text-amber-950 text-xs uppercase tracking-wider flex items-center">
-              <i data-lucide="git-branch" class="w-4 h-4 mr-1.5 text-amber-700"></i>
-              Official Deputation Assignment & Proceedings Details
-            </h4>
-
-            <div>
-              <label class="block font-bold text-slate-800 uppercase mb-1">
-                Deputation Location Type <span class="text-rose-600">*</span>
-              </label>
-              <select id="stage3-posting-type" onchange="handleStage3PostingTypeChange(event)" class="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-700 bg-white outline-none font-semibold text-slate-800">
-                <option value="WITHIN_MANDAL">Deputation Within Same Mandal</option>
-                <option value="ANOTHER_MANDAL">Deputation to Another Mandal in Khammam</option>
-                <option value="OTHER_DISTRICT">Deputation to Other District</option>
-                <option value="OTHER_DEPARTMENT">Deputation to Other Department</option>
-              </select>
-            </div>
-
-            <!-- Destination: Within Same Mandal -->
-            <div id="stage3-dest-same-mandal" class="space-y-1">
-              <label class="block font-bold text-slate-800 uppercase mb-1">
-                Destination Gram Panchayat (Same Mandal) <span class="text-rose-600">*</span>
-              </label>
-              <select id="stage3-same-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
-                <option value="">-- Select Destination GP in Same Mandal --</option>
-              </select>
-            </div>
-
-            <!-- Destination: Another Mandal -->
-            <div id="stage3-dest-another-mandal" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  Destination Mandal <span class="text-rose-600">*</span>
-                </label>
-                <select id="stage3-another-mandal-select" onchange="handleStage3DestMandalChange(event)" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
-                  ${otherMandalOptions}
-                </select>
-              </div>
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  Destination Gram Panchayat <span class="text-rose-600">*</span>
-                </label>
-                <select id="stage3-another-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
-                  <option value="">-- Select Mandal First --</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Destination: Other District -->
-            <div id="stage3-dest-other-dist" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  External District Name <span class="text-rose-600">*</span>
-                </label>
-                <input type="text" id="stage3-other-dist-name" placeholder="e.g. Bhadradri Kothagudem, Warangal..." class="w-full p-2 border border-slate-300 rounded outline-none">
-              </div>
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  Destination Office / Gram Panchayat
-                </label>
-                <input type="text" id="stage3-other-dist-office" placeholder="Office / Gram Panchayat Name..." class="w-full p-2 border border-slate-300 rounded outline-none">
-              </div>
-            </div>
-
-            <!-- Destination: Other Department -->
-            <div id="stage3-dest-other-dept" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  Department Name <span class="text-rose-600">*</span>
-                </label>
-                <input type="text" id="stage3-other-dept-name" placeholder="e.g. Collectorate, DRDO, Zilla Praja Parishad..." class="w-full p-2 border border-slate-300 rounded outline-none">
-              </div>
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">
-                  Designation / Assigned Office
-                </label>
-                <input type="text" id="stage3-other-dept-office" placeholder="Office Name / Position..." class="w-full p-2 border border-slate-300 rounded outline-none">
-              </div>
-            </div>
-
-            <!-- Order / Proceedings Information -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-amber-200">
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">Deputation Order Number</label>
-                <input type="text" id="stage3-order-no" placeholder="Proceedings Order No..." class="w-full p-1.5 border border-slate-300 rounded outline-none">
-              </div>
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">Deputation Order Date</label>
-                <input type="date" id="stage3-order-date" class="w-full p-1.5 border border-slate-300 rounded outline-none bg-white">
-              </div>
-              <div>
-                <label class="block font-bold text-slate-800 uppercase mb-1">Effective From Date</label>
-                <input type="date" id="stage3-effective-date" class="w-full p-1.5 border border-slate-300 rounded outline-none bg-white">
-              </div>
-            </div>
-
-            <div>
-              <label class="block font-bold text-slate-700 uppercase mb-1">Administrative Remarks</label>
-              <input type="text" id="stage3-remarks" placeholder="Provide any additional order notes or remarks..." class="w-full p-1.5 border border-slate-300 rounded outline-none">
-            </div>
-
-          </div>
-
-          <!-- Submit Buttons -->
-          <div class="pt-3 border-t border-slate-200 flex justify-end space-x-3">
-            <button type="submit" id="stage3-submit-btn" class="px-5 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded shadow transition flex items-center">
-              <i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Working Station Mapping (Stage 3)
-            </button>
-          </div>
-
-        </form>
-      </div>
-
-    </div>
-  `;
-  lucide.createIcons();
-
-  if (preselectedEmpId) {
-    const sel = document.getElementById("stage3-emp-select");
-    if (sel) {
-      sel.value = preselectedEmpId;
-      handleStage3EmpSelect({ target: sel });
-    }
-  }
-}
-
-async function handleStage3EmpSelect(e) {
-  const empId = e.target.value;
-  const card = document.getElementById("stage3-info-card");
-  if (!empId) {
-    card.classList.add("hidden");
-    return;
-  }
-
-  try {
-    const info = await fetchAPI(`/employees/stage3-employee-info/${encodeURIComponent(empId)}`);
-    document.getElementById("stage3-info-name").textContent = info.name;
-    document.getElementById("stage3-info-mobile").textContent = info.mobile || "N/A";
-    document.getElementById("stage3-info-sal-gp").textContent = `${info.salary_gp_name || 'Not Mapped'} (${info.salary_mandal_name || ''})`;
-    document.getElementById("stage3-info-status").textContent = info.service_status || "WORKING";
-    card.classList.remove("hidden");
-
-    // Populate Same Mandal GPs
-    if (info.salary_mandal_id) {
-      const mandalGps = centralizedPanchayats.filter(gp => gp.mandal_id === info.salary_mandal_id);
-      let sameOptions = `<option value="">-- Select Destination GP in ${info.salary_mandal_name} --</option>`;
-      mandalGps.forEach(g => {
-        sameOptions += `<option value="${g.lgd_code}">${g.gp_name} (LGD: ${g.lgd_code})</option>`;
-      });
-      document.getElementById("stage3-same-mandal-gp").innerHTML = sameOptions;
-    }
-
-  } catch (err) {
-    console.error("Failed fetching stage 3 info", err);
-  }
-}
-
-function handleStage3WorkingSameChange(e) {
-  const isSame = e.target.value === "YES";
-  const depPanel = document.getElementById("stage3-deputation-panel");
-  if (isSame) {
-    depPanel.classList.add("hidden");
-  } else {
-    depPanel.classList.remove("hidden");
-  }
-}
-
-function handleStage3PostingTypeChange(e) {
-  const type = e.target.value;
-  document.getElementById("stage3-dest-same-mandal").classList.toggle("hidden", type !== "WITHIN_MANDAL");
-  document.getElementById("stage3-dest-another-mandal").classList.toggle("hidden", type !== "ANOTHER_MANDAL");
-  document.getElementById("stage3-dest-other-dist").classList.toggle("hidden", type !== "OTHER_DISTRICT");
-  document.getElementById("stage3-dest-other-dept").classList.toggle("hidden", type !== "OTHER_DEPARTMENT");
-}
-
-function handleStage3DestMandalChange(e) {
-  const mId = parseInt(e.target.value);
-  const gpSelect = document.getElementById("stage3-another-mandal-gp");
-  if (!mId) {
-    gpSelect.innerHTML = `<option value="">-- Select Mandal First --</option>`;
-    return;
-  }
-  const destGps = centralizedPanchayats.filter(g => g.mandal_id === mId);
-  let optHtml = `<option value="">-- Select Destination GP --</option>`;
-  destGps.forEach(g => {
-    optHtml += `<option value="${g.lgd_code}">${g.gp_name} (LGD: ${g.lgd_code})</option>`;
-  });
-  gpSelect.innerHTML = optHtml;
-}
-
-async function handleStage3WorkingSubmit(e) {
-  e.preventDefault();
-  const empId = document.getElementById("stage3-emp-select").value;
-  if (!empId) {
-    alert("Please select a Panchayat Secretary.");
-    return;
-  }
-
-  const isWorkingSame = document.querySelector('input[name="stage3-working-same"]:checked').value === "YES";
-  const postingType = isWorkingSame ? "OWN_GP" : document.getElementById("stage3-posting-type").value;
-
-  let actualWorkingLgd = null;
-  let extDist = null;
-  let extMandal = null;
-  let extOffice = null;
-  let extDept = null;
-
-  if (isWorkingSame) {
-    actualWorkingLgd = null; // Will inherit salary GP on server
-  } else if (postingType === "WITHIN_MANDAL") {
-    actualWorkingLgd = parseInt(document.getElementById("stage3-same-mandal-gp").value);
-    if (!actualWorkingLgd) {
-      alert("Please select the Destination Gram Panchayat in the same Mandal.");
-      return;
-    }
-  } else if (postingType === "ANOTHER_MANDAL") {
-    actualWorkingLgd = parseInt(document.getElementById("stage3-another-mandal-gp").value);
-    if (!actualWorkingLgd) {
-      alert("Please select the Destination Gram Panchayat in the destination Mandal.");
-      return;
-    }
-  } else if (postingType === "OTHER_DISTRICT") {
-    extDist = document.getElementById("stage3-other-dist-name").value.trim();
-    extOffice = document.getElementById("stage3-other-dist-office").value.trim();
-    if (!extDist) {
-      alert("Please provide the External District Name.");
-      return;
-    }
-  } else if (postingType === "OTHER_DEPARTMENT") {
-    extDept = document.getElementById("stage3-other-dept-name").value.trim();
-    extOffice = document.getElementById("stage3-other-dept-office").value.trim();
-    if (!extDept) {
-      alert("Please provide the External Department Name.");
-      return;
-    }
-  }
-
-  const payload = {
-    employee_id: empId,
+    remarks: document.getElementById("stage2-remarks").value || null,
     is_working_in_salary_gp: isWorkingSame,
     posting_type: postingType,
     actual_working_gp_lgd: actualWorkingLgd,
@@ -2160,38 +2103,46 @@ async function handleStage3WorkingSubmit(e) {
     external_mandal_name: extMandal,
     external_gp_or_office_name: extOffice,
     external_department_name: extDept,
-    deputation_order_no: document.getElementById("stage3-order-no")?.value || null,
-    deputation_order_date: document.getElementById("stage3-order-date")?.value || null,
-    effective_from_date: document.getElementById("stage3-effective-date")?.value || null,
-    remarks: document.getElementById("stage3-remarks")?.value || null
+    deputation_order_no: document.getElementById("stage2-dep-order-no")?.value || null,
+    deputation_order_date: document.getElementById("stage2-dep-order-date")?.value || null,
+    deputation_effective_from: document.getElementById("stage2-dep-effective-date")?.value || null,
+    deputation_remarks: document.getElementById("stage2-dep-remarks")?.value || null
   };
 
-  const submitBtn = document.getElementById("stage3-submit-btn");
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 mr-1.5 animate-spin"></i> Saving Working Mapping...`;
-  lucide.createIcons();
-
   try {
-    const res = await fetchAPI("/employees/stage3-working-mapping", {
+    const res = await fetchAPI("/employees/stage2-combined-mapping", {
       method: "POST",
       body: JSON.stringify(payload)
     });
 
-    alert(`Stage 3 Working Station Mapping Saved Successfully!\nPosting Type: ${res.posting_type}\nPresently Working Station: ${res.actual_working_gp_name || 'External Office'}`);
-    
+    alert(
+      `Stage 2 Mapping Saved Successfully!\n` +
+      `Employee: ${empId}\n` +
+      `Salary GP: ${res.salary_gp_name} (${res.salary_mandal_name})\n` +
+      `Working Station: ${res.actual_working_gp_name || 'External Office'} (${res.posting_type})`
+    );
+
     if (confirm("View this record in the 22-Column Master Reconciliation Report?")) {
       navigate("reconciliation-report");
     } else {
-      renderStage3WorkingMappingView();
+      renderStage2SalaryMappingView();
     }
 
   } catch (err) {
-    alert("Working Station Mapping Failed: " + (err.detail || JSON.stringify(err)));
+    alert("Mapping Failed: " + (err.detail || JSON.stringify(err)));
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Working Station Mapping (Stage 3)`;
+    submitBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4 mr-1.5"></i> Save Salary & Working Mapping (Stage 2)`;
     lucide.createIcons();
   }
+}
+
+// ==========================================
+// 2C. STAGE 3 COMPATIBILITY REDIRECT (COMBINED INTO STAGE 2)
+// ==========================================
+function renderStage3WorkingMappingView(preselectedEmpId = null) {
+  if (preselectedEmpId) pendingStage2EmpId = preselectedEmpId;
+  navigate("stage2-salary-mapping");
 }
 
 // ==========================================
@@ -2600,7 +2551,7 @@ async function loadClearVacanciesData() {
           </td>
           <td class="px-3.5 py-2.5 text-slate-500 text-[11px] italic">${gp.vacancy_remarks || 'No secretary attached or working'}</td>
           <td class="px-3.5 py-2.5 text-right">
-            <button onclick="navigate('stage3-working-mapping')" class="px-2.5 py-1 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-[11px] font-semibold transition" title="Depute Secretary">
+            <button onclick="navigate('stage2-salary-mapping')" class="px-2.5 py-1 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-[11px] font-semibold transition" title="Depute Secretary">
               Depute Secretary →
             </button>
           </td>

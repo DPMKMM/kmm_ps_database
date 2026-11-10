@@ -263,6 +263,40 @@ class EmployeeStage3WorkingMapping(BaseModel):
             return None
         return v
 
+class EmployeeCombinedStage2And3Mapping(BaseModel):
+    """COMBINED STAGE 2: Salary GP, Service Status & Working Station Mapping"""
+    employee_id: str
+    # Salary GP & Service Status fields
+    salary_gp_lgd: int
+    salary_claiming_status: str = "YES"  # YES, NO
+    working_from_date: Optional[date] = None
+    service_status: str = "WORKING"
+    reason_remarks: Optional[str] = None
+    status_order_no: Optional[str] = None
+    status_order_date: Optional[date] = None
+    remarks: Optional[str] = None
+    # Working Station & Deputation fields
+    is_working_in_salary_gp: bool = True
+    posting_type: Optional[str] = "OWN_GP"
+    official_deputation_gp_lgd: Optional[int] = None
+    official_deputation_mandal_id: Optional[int] = None
+    actual_working_gp_lgd: Optional[int] = None
+    actual_working_mandal_id: Optional[int] = None
+    external_district_name: Optional[str] = None
+    external_mandal_name: Optional[str] = None
+    external_gp_or_office_name: Optional[str] = None
+    external_department_name: Optional[str] = None
+    deputation_effective_from: Optional[date] = None
+    deputation_order_no: Optional[str] = None
+    deputation_order_date: Optional[date] = None
+    deputation_remarks: Optional[str] = None
+
+    @field_validator('working_from_date', 'status_order_date', 'deputation_effective_from', 'deputation_order_date', mode='before')
+    def parse_empty_combined_dates(cls, v):
+        if not v or v == '':
+            return None
+        return v
+
 class InternalReassignmentCreate(BaseModel):
     """INTERNAL REASSIGNMENT: MPDO / Receiving Mandal local arrangement change"""
     employee_id: Optional[str] = None

@@ -13,7 +13,7 @@ from app.models import (
 from app.schemas import (
     EmployeeCreateRequest, EmployeeUpdateRequest, GlobalDuplicateCheckResult,
     EmployeeStage1Create, EmployeeStage2SalaryMapping, EmployeeStage3WorkingMapping,
-    InternalReassignmentCreate
+    EmployeeCombinedStage2And3Mapping, InternalReassignmentCreate
 )
 from app.auth import get_current_user, require_super_admin, enforce_mandal_isolation
 
@@ -984,14 +984,28 @@ def get_stage3_employee_info(
         "salary_gp_name": salary_gp.gp_name if salary_gp else "Not Mapped Yet (Stage 2 Pending)",
         "salary_mandal_id": sm.salary_mandal_id if sm else None,
         "salary_mandal_name": salary_gp.mandal_name if salary_gp else "N/A",
+        "salary_claiming_status": sm.salary_claiming_status if sm else "YES",
+        "working_from_date": sm.effective_from.strftime("%Y-%m-%d") if sm and sm.effective_from else "",
         "service_status": sh.service_status if sh else "WORKING",
+        "status_order_no": (sh.suspension_order_no or sh.proceedings_order_no) if sh else "",
+        "status_order_date": (sh.status_effective_from.strftime("%Y-%m-%d") if sh and sh.status_effective_from else ""),
+        "status_remarks": sh.reason_remarks if sh else "",
         "current_posting": {
             "posting_id": p.id if p else None,
             "is_working_in_salary_gp": p.is_working_in_salary_gp if p else True,
             "posting_type": p.posting_type if p else "OWN_GP",
             "actual_working_gp_lgd": p.actual_working_gp_lgd if p else (sm.salary_gp_lgd if sm else None),
             "actual_working_gp_name": p.working_panchayat.gp_name if p and p.working_panchayat else (salary_gp.gp_name if salary_gp else None),
+            "actual_working_mandal_id": p.actual_working_mandal_id if p else (sm.salary_mandal_id if sm else None),
             "official_deputation_gp_lgd": p.official_deputation_gp_lgd if p else None,
+            "external_district_name": p.external_district_name if p else "",
+            "external_mandal_name": p.external_mandal_name if p else "",
+            "external_gp_or_office_name": p.external_gp_or_office_name if p else "",
+            "external_department_name": p.external_department_name if p else "",
+            "deputation_order_no": p.deputation_order_no if p else "",
+            "deputation_order_date": p.deputation_order_date.strftime("%Y-%m-%d") if p and p.deputation_order_date else "",
+            "deputation_effective_from": p.deputation_effective_from.strftime("%Y-%m-%d") if p and p.deputation_effective_from else "",
+            "remarks": p.remarks if p else "",
             "has_internal_reassignment": p.has_internal_reassignment if p else False,
             "verification_status": p.verification_status if p else "PENDING"
         } if p else None
@@ -1138,6 +1152,196 @@ def stage3_map_working_station(
     return {
         "message": f"Working station & deputation mapping saved successfully for {emp.name_ifmis} (Stage 3 Complete).",
         "employee_id": emp.employee_id,
+        "posting_type": posting_type,
+        "is_working_in_salary_gp": payload.is_working_in_salary_gp,
+        "actual_working_gp_name": w_gp_name,
+        "actual_working_mandal_name": w_mandal_name
+    }
+
+@router.post("/stage2-combined-mapping")
+def stage2_combined_mapping(
+    payload: EmployeeCombinedStage2And3Mapping,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    emp = db.query(Employee).filter(Employee.employee_id == payload.employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found in Master Directory. Please register under Stage 1 first.")
+
+    gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == payload.salary_gp_lgd).first()
+    if not gp:
+        raise HTTPException(status_code=400, detail="Invalid Salary-Claiming Gram Panchayat LGD Code.")
+
+    enforce_mandal_isolation(current_user, gp.mandal_id)
+
+    now = datetime.utcnow()
+    work_from = payload.working_from_date or date.today()
+
+    # 1. Salary GP Mapping
+    db.query(EmployeeSalaryMapping).filter(
+        EmployeeSalaryMapping.employee_id == emp.employee_id,
+        EmployeeSalaryMapping.is_active == True
+    ).update({"is_active": False})
+
+    new_sm = EmployeeSalaryMapping(
+        employee_id=emp.employee_id,
+        salary_gp_lgd=gp.lgd_code,
+        salary_mandal_id=gp.mandal_id,
+        salary_claiming_status=payload.salary_claiming_status,
+        service_status=payload.service_status,
+        effective_from=work_from,
+        is_active=True,
+        created_by=current_user.username,
+        created_at=now
+    )
+    db.add(new_sm)
+
+    # 2. Service Status History
+    db.query(EmployeeStatusHistory).filter(
+        EmployeeStatusHistory.employee_id == emp.employee_id,
+        EmployeeStatusHistory.is_current == True
+    ).update({"is_current": False})
+
+    status_effective_date = payload.status_order_date or work_from
+    new_sh = EmployeeStatusHistory(
+        employee_id=emp.employee_id,
+        service_status=payload.service_status,
+        status_effective_from=status_effective_date,
+        proceedings_order_no=payload.status_order_no,
+        proceedings_order_date=payload.status_order_date,
+        reason_remarks=payload.remarks or payload.reason_remarks,
+        is_current=True,
+        updated_by=current_user.username,
+        updated_at=now
+    )
+    if payload.service_status == "SUSPENDED":
+        new_sh.suspension_order_no = payload.status_order_no
+        new_sh.suspension_effective_date = status_effective_date
+    db.add(new_sh)
+
+    # 3. Working Station & Deputation Mapping
+    db.query(EmployeePosting).filter(
+        EmployeePosting.employee_id == emp.employee_id,
+        EmployeePosting.is_current == True
+    ).update({"is_current": False})
+
+    w_gp_name = None
+    w_mandal_name = None
+
+    if payload.is_working_in_salary_gp:
+        posting_type = "OWN_GP"
+        act_gp = gp.lgd_code
+        act_mandal = gp.mandal_id
+        off_dep_gp = None
+        off_dep_mandal = None
+        ext_d = None
+        ext_m = None
+        ext_o = None
+        ext_dept = None
+        verif_status = "VERIFIED_BOTH"
+        w_gp_name = gp.gp_name
+        w_mandal_name = gp.mandal_name
+    else:
+        posting_type = payload.posting_type or "WITHIN_MANDAL"
+        if posting_type == "OTHER_DISTRICT":
+            act_gp = None
+            act_mandal = None
+            off_dep_gp = None
+            off_dep_mandal = None
+            ext_d = payload.external_district_name
+            ext_m = payload.external_mandal_name
+            ext_o = payload.external_gp_or_office_name
+            ext_dept = None
+            verif_status = "VERIFIED_SALARY_GP"
+            w_gp_name = ext_o or ext_d
+            w_mandal_name = ext_d
+        elif posting_type == "OTHER_DEPARTMENT":
+            act_gp = None
+            act_mandal = None
+            off_dep_gp = None
+            off_dep_mandal = None
+            ext_d = "Telangana"
+            ext_m = None
+            ext_o = payload.external_gp_or_office_name
+            ext_dept = payload.external_department_name
+            verif_status = "VERIFIED_SALARY_GP"
+            w_gp_name = ext_o or ext_dept
+            w_mandal_name = ext_dept
+        else:
+            dest_gp_lgd = payload.official_deputation_gp_lgd or payload.actual_working_gp_lgd
+            if not dest_gp_lgd:
+                raise HTTPException(status_code=400, detail="Destination Gram Panchayat is mandatory for deputation.")
+            dest_gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == dest_gp_lgd).first()
+            if not dest_gp:
+                raise HTTPException(status_code=400, detail="Invalid destination Gram Panchayat LGD Code.")
+
+            act_gp = dest_gp.lgd_code
+            act_mandal = dest_gp.mandal_id
+            off_dep_gp = dest_gp.lgd_code
+            off_dep_mandal = dest_gp.mandal_id
+            ext_d = None
+            ext_m = None
+            ext_o = None
+            ext_dept = None
+            verif_status = "PENDING"
+            w_gp_name = dest_gp.gp_name
+            w_mandal_name = dest_gp.mandal_name
+
+    new_posting = EmployeePosting(
+        employee_id=emp.employee_id,
+        is_working_in_salary_gp=payload.is_working_in_salary_gp,
+        posting_type=posting_type,
+        actual_working_gp_lgd=act_gp,
+        actual_working_mandal_id=act_mandal,
+        official_deputation_gp_lgd=off_dep_gp,
+        official_deputation_mandal_id=off_dep_mandal,
+        external_district_name=ext_d,
+        external_mandal_name=ext_m,
+        external_gp_or_office_name=ext_o,
+        external_department_name=ext_dept,
+        deputation_effective_from=payload.deputation_effective_from or work_from,
+        deputation_order_no=payload.deputation_order_no,
+        deputation_order_date=payload.deputation_order_date,
+        remarks=payload.deputation_remarks or payload.remarks,
+        verification_status=verif_status,
+        is_current=True,
+        updated_by=current_user.username,
+        created_at=now,
+        updated_at=now
+    )
+    db.add(new_posting)
+    db.flush()
+
+    if not payload.is_working_in_salary_gp and posting_type in ["WITHIN_MANDAL", "ANOTHER_MANDAL"]:
+        db.add(GPVerification(
+            posting_id=new_posting.id,
+            employee_id=emp.employee_id,
+            salary_mandal_id=gp.mandal_id,
+            receiving_mandal_id=act_mandal,
+            status="PENDING"
+        ))
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        mandal_id=gp.mandal_id,
+        action="STAGE2_COMBINED_MAPPING",
+        entity_type="EMPLOYEE_MAPPING",
+        entity_id=emp.employee_id,
+        details=f"Combined Stage 2 mapping saved for {emp.name_ifmis} ({emp.employee_id}): Salary GP {gp.gp_name} ({gp.mandal_name}), Status {payload.service_status}, Working Station: {w_gp_name or 'External'} ({posting_type})",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=now
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "message": f"Salary GP & Working Station mapping saved successfully for {emp.name_ifmis}.",
+        "employee_id": emp.employee_id,
+        "salary_gp_name": gp.gp_name,
+        "salary_mandal_name": gp.mandal_name,
+        "service_status": payload.service_status,
         "posting_type": posting_type,
         "is_working_in_salary_gp": payload.is_working_in_salary_gp,
         "actual_working_gp_name": w_gp_name,
