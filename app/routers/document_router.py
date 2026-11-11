@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EmployeeDocument, Employee, User, AuditLog
-from app.auth import get_current_user
+from app.auth import get_current_user, enforce_employee_mandal_scope
 from app.config import settings
 
 router = APIRouter(prefix="/api/documents", tags=["Supporting Documents"])
@@ -27,6 +27,7 @@ async def upload_document(
     emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
+    enforce_employee_mandal_scope(db, current_user, emp.employee_id, allow_viewer=False)
         
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -82,6 +83,7 @@ def get_employee_documents(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    enforce_employee_mandal_scope(db, current_user, employee_id, allow_viewer=True)
     docs = db.query(EmployeeDocument).filter(EmployeeDocument.employee_id == employee_id).order_by(EmployeeDocument.uploaded_at.desc()).all()
     return [
         {
@@ -104,6 +106,7 @@ def download_document(
     doc = db.query(EmployeeDocument).filter(EmployeeDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    enforce_employee_mandal_scope(db, current_user, doc.employee_id, allow_viewer=True)
         
     file_path = os.path.join(settings.UPLOAD_DIR, doc.file_path)
     if not os.path.exists(file_path):

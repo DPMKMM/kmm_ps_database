@@ -644,5 +644,107 @@ class TestKhammamPSApplication(unittest.TestCase):
         self.assertNotIn(leave_emp, [r[1] for r in e_leave.json()["rows"]])
         self.client.post("/api/auth/logout", headers=e_headers)
 
+    def test_13_strict_mandal_isolation_deputation_chains_and_views(self):
+        """
+        Verify Deputation Chains Graph and all endpoints strictly isolate Mandal Admin
+        to only their concerned Mandal's data (even if spoofing mandal_id or querying other Mandals).
+        """
+        enkoor_user = self.db.query(User).filter(User.username == "enkoor").first()
+        kallur_user = self.db.query(User).filter(User.username == "kallur").first()
+        sathupally_user = self.db.query(User).filter(User.username == "sathupally").first()
+
+        e_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == enkoor_user.mandal_id).all()
+        k_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == kallur_user.mandal_id).all()
+        s_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == sathupally_user.mandal_id).all()
+
+        admin_login = self.client.post("/api/auth/login", json={
+            "username": "admin",
+            "password": "Admin@Khammam2026",
+            "device_info": "Admin Chain Isolation Test"
+        })
+        a_hdr = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+        emp_e = f"TS-CE-{uuid.uuid4().hex[:4].upper()}"
+        emp_k_to_e = f"TS-CKE-{uuid.uuid4().hex[:4].upper()}"
+        emp_s_only = f"TS-CS-{uuid.uuid4().hex[:4].upper()}"
+
+        # Enkoor intra-mandal deputation
+        self.assertEqual(self.client.post("/api/employees", headers=a_hdr, json={
+            "employee_id": emp_e, "name_ifmis": "Enkoor Chain PS", "dob": "1990-01-01",
+            "mobile_number": "9111111111", "salary_gp_lgd": e_gps[3].lgd_code,
+            "is_working_in_salary_gp": False, "posting_type": "WITHIN_MANDAL",
+            "actual_working_gp_lgd": e_gps[4].lgd_code, "service_status": "WORKING"
+        }).status_code, 201)
+
+        # Cross-mandal deputation INTO Enkoor (concerned with Enkoor)
+        self.assertEqual(self.client.post("/api/employees", headers=a_hdr, json={
+            "employee_id": emp_k_to_e, "name_ifmis": "Incoming Enkoor PS", "dob": "1990-02-02",
+            "mobile_number": "9222222222", "salary_gp_lgd": k_gps[2].lgd_code,
+            "is_working_in_salary_gp": False, "posting_type": "ANOTHER_MANDAL",
+            "actual_working_gp_lgd": e_gps[5].lgd_code, "service_status": "WORKING"
+        }).status_code, 201)
+
+        # Unrelated Sathupally intra-mandal deputation (plus SUSPENDED without order for discrepancy scan)
+        self.assertEqual(self.client.post("/api/employees", headers=a_hdr, json={
+            "employee_id": emp_s_only, "name_ifmis": "Sathupally Hidden PS", "dob": "1990-03-03",
+            "mobile_number": "9333333333", "salary_gp_lgd": s_gps[0].lgd_code,
+            "is_working_in_salary_gp": False, "posting_type": "WITHIN_MANDAL",
+            "actual_working_gp_lgd": s_gps[1].lgd_code, "service_status": "SUSPENDED"
+        }).status_code, 201)
+
+        # Admin sees all 3 chains
+        admin_chains = self.client.get("/api/deputations/chains", headers=a_hdr)
+        self.assertEqual(admin_chains.status_code, 200)
+        admin_edge_ids = {e["employee_id"] for e in admin_chains.json()["graph"]["edges"]}
+        self.assertIn(emp_e, admin_edge_ids)
+        self.assertIn(emp_k_to_e, admin_edge_ids)
+        self.assertIn(emp_s_only, admin_edge_ids)
+
+        # Admin scoped by ?mandal_id filters cleanly
+        admin_s_chains = self.client.get(f"/api/deputations/chains?mandal_id={sathupally_user.mandal_id}", headers=a_hdr)
+        self.assertEqual(admin_s_chains.status_code, 200)
+        s_edge_ids = {e["employee_id"] for e in admin_s_chains.json()["graph"]["edges"]}
+        self.assertIn(emp_s_only, s_edge_ids)
+        self.assertNotIn(emp_e, s_edge_ids)
+        self.client.post("/api/auth/logout", headers=a_hdr)
+
+        # Enkoor Mandal Admin login: STRICTLY concerned Mandal only
+        enkoor_login = self.client.post("/api/auth/login", json={
+            "username": "enkoor", "password": "Mandal@5065", "device_info": "Enkoor Chain Isolation"
+        })
+        e_hdr = {"Authorization": f"Bearer {enkoor_login.json()['access_token']}"}
+
+        # Spoofing another mandal_id in /deputations/chains must still return only Enkoor data
+        e_chains = self.client.get(f"/api/deputations/chains?mandal_id={sathupally_user.mandal_id}", headers=e_hdr)
+        self.assertEqual(e_chains.status_code, 200)
+        e_edge_ids = {e["employee_id"] for e in e_chains.json()["graph"]["edges"]}
+        self.assertIn(emp_e, e_edge_ids)
+        self.assertIn(emp_k_to_e, e_edge_ids)
+        self.assertNotIn(emp_s_only, e_edge_ids)
+
+        # Report Q (Chain Report) excludes unrelated Sathupally employee
+        e_rep_q = self.client.get("/api/reports/data/Q", headers=e_hdr)
+        self.assertEqual(e_rep_q.status_code, 200)
+        self.assertNotIn(emp_s_only, [r[1] for r in e_rep_q.json()["rows"]])
+
+        # Spoofing ?mandal_id on /panchayats returns ONLY Enkoor GPs
+        e_gps_res = self.client.get(f"/api/panchayats?mandal_id={sathupally_user.mandal_id}", headers=e_hdr)
+        self.assertEqual(e_gps_res.status_code, 200)
+        self.assertTrue(all(g["mandal_id"] == enkoor_user.mandal_id for g in e_gps_res.json()))
+
+        # Direct lookup of another Mandal's GP, Employee Profile, Stage3 Info, and Documents must be 403
+        self.assertEqual(self.client.get(f"/api/panchayats/{s_gps[0].lgd_code}", headers=e_hdr).status_code, 403)
+        self.assertEqual(self.client.get(f"/api/employees/{emp_s_only}", headers=e_hdr).status_code, 403)
+        self.assertEqual(self.client.get(f"/api/employees/stage3-employee-info/{emp_s_only}", headers=e_hdr).status_code, 403)
+        self.assertEqual(self.client.get(f"/api/documents/employee/{emp_s_only}", headers=e_hdr).status_code, 403)
+
+        # Discrepancy scan items must never leak unrelated Sathupally items to Enkoor
+        scan_res = self.client.get("/api/discrepancies/scan", headers=e_hdr)
+        self.assertEqual(scan_res.status_code, 200)
+        scan_emp_ids = {item.get("employee_id") for item in scan_res.json()["items"]}
+        self.assertNotIn(emp_s_only, scan_emp_ids)
+
+        self.client.post("/api/auth/logout", headers=e_hdr)
+
 if __name__ == "__main__":
     unittest.main()

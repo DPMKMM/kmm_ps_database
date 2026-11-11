@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.database import get_db
 from app.models import (
@@ -21,10 +21,13 @@ def get_deputation_chains(
 ):
     """
     SECTION 8: AUTOMATIC DEPUTATION CHAIN TRACKING ENGINE
-    Discovers all multi-hop deputation chains across the district.
+    Discovers multi-hop deputation chains.
+    Strictly scoped to logged-in Mandal when user is MANDAL_ADMIN.
     """
-    # 1. Fetch all active postings where employee is deputed (not working in own salary GP)
-    deputed_postings = (
+    target_mandal_id = current_user.mandal_id if current_user.role == "MANDAL_ADMIN" else mandal_id
+
+    # 1. Fetch active postings where employee is deputed (not working in own salary GP)
+    q = (
         db.query(
             EmployeePosting,
             EmployeeSalaryMapping,
@@ -39,8 +42,16 @@ def get_deputation_chains(
             EmployeePosting.is_working_in_salary_gp == False,
             EmployeeSalaryMapping.is_active == True
         )
-        .all()
     )
+    if target_mandal_id:
+        q = q.filter(
+            or_(
+                EmployeeSalaryMapping.salary_mandal_id == target_mandal_id,
+                EmployeePosting.actual_working_mandal_id == target_mandal_id,
+                EmployeePosting.official_deputation_mandal_id == target_mandal_id
+            )
+        )
+    deputed_postings = q.all()
     
     # Map by salary GP lgd -> list of employees drawing salary from that GP
     salary_gp_to_emps: Dict[int, List[Dict[str, Any]]] = {}

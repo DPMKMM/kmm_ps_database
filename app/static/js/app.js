@@ -31,6 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function initApp() {
+  resetScopedViewFilters();
   lucide.createIcons();
   loadCommonData();
   
@@ -326,6 +327,37 @@ function updateHeaderAndNavScope(summary = null) {
   }
 }
 
+function resetScopedViewFilters() {
+  gpMasterMandalFilter = "";
+  gpMasterSearch = "";
+  gpMasterPage = 0;
+  clearVacancyMandal = "";
+  clearVacancySearch = "";
+  empMasterMandal = "";
+  empMasterSearch = "";
+  empMasterStatus = "";
+  empMasterPosting = "";
+  empMasterPage = 0;
+  currentReportMandalId = "";
+  currentChainMandalId = "";
+}
+
+function buildMandalScopeOptions(allLabel = "All Mandals", selectedValue = "", useNameAsValue = false) {
+  if (currentUser && currentUser.role === "MANDAL_ADMIN") {
+    const val = useNameAsValue ? (currentUser.mandal_name || "") : (currentUser.mandal_id || "");
+    const label = `${currentUser.mandal_name} (LGD: ${currentUser.mandal_lgd || ""})`;
+    return `<option value="${escapeReportCell(val)}" selected>${escapeReportCell(label)}</option>`;
+  }
+  let html = `<option value="">${escapeReportCell(allLabel)}</option>`;
+  cachedMandals.forEach(m => {
+    const val = useNameAsValue ? m.mandal_name : m.id;
+    const isSel = String(selectedValue) === String(val) ? "selected" : "";
+    const label = useNameAsValue ? m.mandal_name : `${m.mandal_name} (LGD: ${m.mandal_lgd})`;
+    html += `<option value="${escapeReportCell(val)}" ${isSel}>${escapeReportCell(label)}</option>`;
+  });
+  return html;
+}
+
 async function handleLogout(skipServerLogout = false) {
   if (!skipServerLogout && authToken) {
     try {
@@ -340,6 +372,7 @@ async function handleLogout(skipServerLogout = false) {
   clearInterval(sessionTimerInterval);
   authToken = null;
   currentUser = null;
+  resetScopedViewFilters();
   localStorage.removeItem("khammam_ps_token");
   localStorage.removeItem("khammam_ps_user");
   showLoginModal();
@@ -2421,11 +2454,11 @@ async function renderClearVacancyRegisterView() {
 
   const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   const myMandalId = currentUser ? currentUser.mandal_id : null;
+  if (isMandal) {
+    clearVacancyMandal = String(myMandalId || "");
+  }
 
-  let mandalOptions = `<option value="">All Mandals</option>`;
-  cachedMandals.forEach(m => {
-    mandalOptions += `<option value="${m.id}">${m.mandal_name} (LGD: ${m.mandal_lgd})</option>`;
-  });
+  const mandalOptions = buildMandalScopeOptions("All Mandals", clearVacancyMandal, false);
 
   container.innerHTML = `
     <div class="space-y-5">
@@ -2436,14 +2469,14 @@ async function renderClearVacancyRegisterView() {
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300 mb-1">
             <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1"></i> CATEGORY A • NO SALARY CLAIMANT & NO DEPUTED PS
           </span>
-          <h2 class="text-xl font-bold text-slate-900">Clear Vacancy Register (Category A ONLY)</h2>
-          <p class="text-xs text-slate-500">Dedicated register strictly displaying Gram Panchayats with zero salary claimants, zero deputed secretaries, and zero attending personnel.</p>
+          <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal Clear Vacancy Register` : "Clear Vacancy Register (Category A ONLY)"}</h2>
+          <p class="text-xs text-slate-500">${isMandal ? `Gram Panchayats in ${currentUser.mandal_name} Mandal with zero salary claimants and zero deputed personnel.` : "Dedicated register strictly displaying Gram Panchayats with zero salary claimants, zero deputed secretaries, and zero attending personnel."}</p>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="downloadReportExcel('H')" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportExcel('H', clearVacancyMandal)" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 mr-1.5"></i> Download Category A Excel
           </button>
-          <button onclick="downloadReportCSV('H')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportCSV('H', clearVacancyMandal)" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> CSV
           </button>
         </div>
@@ -2582,10 +2615,7 @@ async function renderReconciliationReportView() {
   const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   const myMandalId = currentUser ? currentUser.mandal_id : null;
 
-  let mandalOptions = `<option value="">All Mandals</option>`;
-  cachedMandals.forEach(m => {
-    mandalOptions += `<option value="${m.mandal_name}">${m.mandal_name}</option>`;
-  });
+  const mandalOptions = buildMandalScopeOptions("All Mandals", isMandal ? currentUser.mandal_name : "", true);
 
   container.innerHTML = `
     <div class="space-y-5">
@@ -2596,14 +2626,14 @@ async function renderReconciliationReportView() {
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 mb-1">
             <i data-lucide="shield-check" class="w-3.5 h-3.5 mr-1"></i> STATUTORY AUDIT & RECONCILIATION
           </span>
-          <h2 class="text-xl font-bold text-slate-900">District Panchayat Secretary Master & Working Station Reconciliation Report</h2>
-          <p class="text-xs text-slate-500">Mandatory 22-column comprehensive reconciliation statement showing salary GP, official deputation GP, internal reassignment, presently working GP, and verification status.</p>
+          <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal PS Master & Reconciliation Report` : "District Panchayat Secretary Master & Working Station Reconciliation Report"}</h2>
+          <p class="text-xs text-slate-500">${isMandal ? `22-column reconciliation statement strictly scoped to ${currentUser.mandal_name} Mandal.` : "Mandatory 22-column comprehensive reconciliation statement showing salary GP, official deputation GP, internal reassignment, presently working GP, and verification status."}</p>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="downloadReportExcel('D')" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportExcel('D', ${isMandal ? "currentUser.mandal_id" : "''"})" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 mr-1.5"></i> Export 22-Col Excel
           </button>
-          <button onclick="downloadReportCSV('D')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
+          <button onclick="downloadReportCSV('D', ${isMandal ? "currentUser.mandal_id" : "''"})" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-semibold flex items-center shadow transition">
             <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1.5"></i> Export CSV
           </button>
           <button onclick="window.print()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-semibold flex items-center shadow-sm">
@@ -2624,7 +2654,7 @@ async function renderReconciliationReportView() {
 
         <div>
           <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Mandal Filter</label>
-          <select id="recon-mandal-filter" onchange="filterReconciliationTable()" class="w-full p-1.5 text-xs border border-slate-300 rounded bg-white outline-none">
+          <select id="recon-mandal-filter" ${isMandal ? "disabled" : ""} onchange="filterReconciliationTable()" class="w-full p-1.5 text-xs border border-slate-300 rounded bg-white disabled:bg-slate-100 outline-none">
             ${mandalOptions}
           </select>
         </div>
@@ -3600,17 +3630,18 @@ let empMasterPage = 0;
 
 async function renderEmployeeMasterView() {
   const container = document.getElementById("view-employee-master");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
+  if (isMandal) {
+    empMasterMandal = String(currentUser.mandal_id || "");
+  }
 
-  let mandalOptions = `<option value="">All Mandals</option>`;
-  cachedMandals.forEach(m => {
-    mandalOptions += `<option value="${m.id}">${m.mandal_name}</option>`;
-  });
+  const mandalOptions = buildMandalScopeOptions("All Mandals", empMasterMandal, false);
 
   container.innerHTML = `
     <div class="flex justify-between items-center mb-5">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">District Employee Master Directory</h2>
-        <p class="text-xs text-slate-500">Master database of all registered Panchayat Secretaries in Khammam District</p>
+        <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal Employee Directory` : "District Employee Master Directory"}</h2>
+        <p class="text-xs text-slate-500">${isMandal ? `Registered & working Panchayat Secretaries strictly scoped to ${currentUser.mandal_name} Mandal` : "Master database of all registered Panchayat Secretaries in Khammam District"}</p>
       </div>
       <div>
         <button onclick="navigate('employee-entry')" class="px-3.5 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow">
@@ -3627,7 +3658,7 @@ async function renderEmployeeMasterView() {
       </div>
       <div>
         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Mandal Filter</label>
-        <select id="emp-mandal-select" onchange="handleEmpMandalChange(event)" class="w-full p-1.5 text-xs border border-slate-300 rounded outline-none bg-white">
+        <select id="emp-mandal-select" ${isMandal ? "disabled" : ""} onchange="handleEmpMandalChange(event)" class="w-full p-1.5 text-xs border border-slate-300 rounded outline-none bg-white disabled:bg-slate-100">
           ${mandalOptions}
         </select>
       </div>
@@ -3948,11 +3979,12 @@ async function renderSalaryClaimingView() {
 // ==========================================
 async function renderEmployeeTrackingView() {
   const container = document.getElementById("view-employee-tracking");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   container.innerHTML = `
     <div class="max-w-4xl mx-auto space-y-6">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">Panchayat Secretary Live Tracking Portal</h2>
-        <p class="text-xs text-slate-500">Instant lookup of any employee's verified location, salary GP and status</p>
+        <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal Secretary Live Tracking` : "Panchayat Secretary Live Tracking Portal"}</h2>
+        <p class="text-xs text-slate-500">${isMandal ? `Instant lookup of employees mapped or working in ${currentUser.mandal_name} Mandal` : "Instant lookup of any employee's verified location, salary GP and status"}</p>
       </div>
 
       <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex space-x-3 items-center">
@@ -4038,26 +4070,48 @@ async function executeTrackingSearch() {
 // ==========================================
 // 7. DEPUTATION CHAINS GRAPH & INTELLIGENCE
 // ==========================================
+let currentChainMandalId = "";
+let lastDrawnGraph = null;
+let lastNodePositions = {};
+
 async function renderDeputationChainsView() {
   const container = document.getElementById("view-deputation-chains");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
+  if (isMandal) {
+    currentChainMandalId = String(currentUser.mandal_id || "");
+  }
+
+  const mandalOptions = buildMandalScopeOptions("All 20 Mandals (District View)", currentChainMandalId, false);
+  const title = isMandal
+    ? `${currentUser.mandal_name} Mandal Deputation Chains Graph`
+    : "Automatic Deputation Chain Tracking Engine";
+  const subtitle = isMandal
+    ? `Showing deputation links and chains strictly belonging to ${currentUser.mandal_name} Mandal`
+    : "Interactive relationship diagram tracing multi-hop deputation chains and detecting circular links";
+
   container.innerHTML = `
-    <div class="flex justify-between items-center mb-5">
+    <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">Automatic Deputation Chain Tracking Engine</h2>
-        <p class="text-xs text-slate-500">Interactive relationship diagram tracing multi-hop deputation chains and detecting circular links</p>
+        <h2 class="text-xl font-bold text-slate-900">${title}</h2>
+        <p class="text-xs text-slate-500">${subtitle}</p>
       </div>
-      <div>
-        <button onclick="downloadReportExcel('Q')" class="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-semibold flex items-center shadow">
+      <div class="flex items-center gap-2">
+        <div>
+          <select id="chain-mandal-filter" ${isMandal ? "disabled" : ""} onchange="handleChainMandalChange(event)" class="p-1.5 text-xs border border-slate-300 rounded bg-white disabled:bg-slate-100 font-semibold text-slate-800 outline-none">
+            ${mandalOptions}
+          </select>
+        </div>
+        <button onclick="downloadReportExcel('Q', currentChainMandalId)" class="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-semibold flex items-center shadow">
           <i data-lucide="download" class="w-3.5 h-3.5 mr-1.5"></i> Export Chain Report (Q)
         </button>
       </div>
     </div>
 
     <!-- Summary Notice -->
-    <div class="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs mb-5 flex items-center justify-between">
+    <div class="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs mb-5 flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center space-x-2">
         <i data-lucide="info" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
-        <span><strong>Independent Verification Rule:</strong> Every employee has an independently recorded location. A chain of GP relationships does not automatically assume postings.</span>
+        <span><strong>${isMandal ? `${currentUser.mandal_name} Mandal Scope:` : "Independent Verification Rule:"}</strong> ${isMandal ? `Only deputations drawing salary from or working inside ${currentUser.mandal_name} Mandal are visible.` : "Every employee has an independently recorded location. A chain of GP relationships does not automatically assume postings."}</span>
       </div>
       <div id="chains-stat-badge" class="font-bold font-mono text-amber-900">Scanning chains...</div>
     </div>
@@ -4071,14 +4125,15 @@ async function renderDeputationChainsView() {
           <h3 class="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center">
             <i data-lucide="git-merge" class="w-4 h-4 mr-1.5 text-purple-600"></i> Interactive Deputation Network Visualizer
           </h3>
-          <span class="text-[10px] text-slate-400">Green = Working Staff | Red = Circular Warnings</span>
+          <span class="text-[10px] text-slate-400">Green = Working Staff | Amber = Leave/Suspended</span>
         </div>
         <div class="relative bg-slate-950 rounded-lg overflow-hidden h-[420px] flex items-center justify-center">
-          <canvas id="deputation-canvas" class="w-full h-full"></canvas>
-          <div id="canvas-overlay-tip" class="absolute bottom-2 left-2 text-[10px] text-slate-400 bg-black/60 px-2 py-1 rounded pointer-events-none">
-            Interactive: Click nodes to view employee deputation details
+          <canvas id="deputation-canvas" onclick="handleDeputationCanvasClick(event)" class="w-full h-full cursor-pointer"></canvas>
+          <div id="canvas-overlay-tip" class="absolute bottom-2 left-2 text-[10px] text-slate-300 bg-black/70 px-2.5 py-1 rounded pointer-events-none">
+            Click a node to view deputation links for that Gram Panchayat
           </div>
         </div>
+        <div id="chain-node-inspector" class="hidden mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700"></div>
       </div>
 
       <!-- Right 1 Col: Discovered Chains List -->
@@ -4094,52 +4149,112 @@ async function renderDeputationChainsView() {
     </div>
   `;
   lucide.createIcons();
+  loadDeputationChainsData();
+}
+
+function handleChainMandalChange(e) {
+  currentChainMandalId = e.target.value;
+  loadDeputationChainsData();
+}
+
+async function loadDeputationChainsData() {
+  const chainsContainer = document.getElementById("chains-list-container");
+  const statBadge = document.getElementById("chains-stat-badge");
+  const inspector = document.getElementById("chain-node-inspector");
+  if (inspector) inspector.classList.add("hidden");
+  if (chainsContainer) chainsContainer.innerHTML = `<div class="text-center py-8 text-slate-400">Loading chains...</div>`;
 
   try {
-    const res = await fetchAPI("/deputations/chains");
+    let url = "/deputations/chains";
+    if (currentChainMandalId) {
+      url += `?mandal_id=${encodeURIComponent(currentChainMandalId)}`;
+    }
+    const res = await fetchAPI(url);
     const chains = res.chains || [];
-    const circularWarnings = res.circular_warnings || [];
 
-    document.getElementById("chains-stat-badge").textContent = `Chains Found: ${chains.length} (Multi-Hop: ${res.multi_hop_chains_count})`;
+    if (statBadge) {
+      statBadge.textContent = `Chains Found: ${chains.length} (Multi-Hop: ${res.multi_hop_chains_count})`;
+    }
 
-    // Render Chains Cards in Right Column
-    const chainsContainer = document.getElementById("chains-list-container");
-    if (chains.length === 0) {
-      chainsContainer.innerHTML = `<div class="text-center py-6 text-slate-400">No active deputation chains found.</div>`;
-    } else {
-      let cardsHtml = "";
-      chains.forEach((c, idx) => {
-        let hopSteps = "";
-        c.employees.forEach((e, hIdx) => {
-          hopSteps += `
-            <div class="p-2 bg-slate-50 rounded border border-slate-200 mb-1.5 text-[11px]">
-              <div class="font-bold text-slate-900">${hIdx + 1}. ${e.name_ifmis} (${e.employee_id})</div>
-              <div class="text-slate-500">Draws Salary: <strong>${e.salary_gp_name}</strong></div>
-              <div class="text-govblue-900">Works At: <strong>${e.actual_working_gp_name}</strong></div>
+    if (chainsContainer) {
+      if (chains.length === 0) {
+        chainsContainer.innerHTML = `<div class="text-center py-6 text-slate-400">No active deputation chains found for selected Mandal scope.</div>`;
+      } else {
+        let cardsHtml = "";
+        chains.forEach((c) => {
+          let hopSteps = "";
+          c.employees.forEach((e, hIdx) => {
+            hopSteps += `
+              <div class="p-2 bg-slate-50 rounded border border-slate-200 mb-1.5 text-[11px]">
+                <div class="font-bold text-slate-900">${hIdx + 1}. ${escapeReportCell(e.name_ifmis)} (${escapeReportCell(e.employee_id)})</div>
+                <div class="text-slate-500">Draws Salary: <strong>${escapeReportCell(e.salary_gp_name)} (${escapeReportCell(e.salary_mandal_name)})</strong></div>
+                <div class="text-govblue-900">Works At: <strong>${escapeReportCell(e.actual_working_gp_name)} (${escapeReportCell(e.actual_working_mandal_name)})</strong></div>
+              </div>
+            `;
+          });
+
+          cardsHtml += `
+            <div class="p-3 bg-white rounded-lg border ${c.is_circular ? 'border-red-400 bg-red-50/20' : 'border-slate-200'} shadow-sm">
+              <div class="flex justify-between items-center mb-1.5">
+                <span class="font-bold font-mono text-purple-700 text-xs">${escapeReportCell(c.chain_id)}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${c.is_multi_hop ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}">${c.length} Hops</span>
+              </div>
+              ${c.is_circular ? `<div class="text-[10px] font-bold text-red-600 mb-1.5">CIRCULAR REFERENCE DETECTED</div>` : ''}
+              <div>${hopSteps}</div>
             </div>
           `;
         });
-
-        cardsHtml += `
-          <div class="p-3 bg-white rounded-lg border ${c.is_circular ? 'border-red-400 bg-red-50/20' : 'border-slate-200'} shadow-sm">
-            <div class="flex justify-between items-center mb-1.5">
-              <span class="font-bold font-mono text-purple-700 text-xs">${c.chain_id}</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${c.is_multi_hop ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}">${c.length} Hops</span>
-            </div>
-            ${c.is_circular ? `<div class="text-[10px] font-bold text-red-600 mb-1.5">⚠️ CIRCULAR REFERENCE DETECTED</div>` : ''}
-            <div>${hopSteps}</div>
-          </div>
-        `;
-      });
-      chainsContainer.innerHTML = cardsHtml;
+        chainsContainer.innerHTML = cardsHtml;
+      }
     }
 
-    // Draw Graph onto HTML5 Canvas
+    lastDrawnGraph = res.graph;
     drawDeputationGraph(res.graph);
-
   } catch (err) {
     console.error("Deputation chain load error", err);
+    if (chainsContainer) {
+      chainsContainer.innerHTML = `<div class="text-center py-6 text-red-500">Failed to load deputation chains: ${escapeReportCell(err.detail || err.message)}</div>`;
+    }
   }
+}
+
+function handleDeputationCanvasClick(event) {
+  if (!lastDrawnGraph) return;
+  const canvas = document.getElementById("deputation-canvas");
+  const inspector = document.getElementById("chain-node-inspector");
+  if (!canvas || !inspector) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const clickY = event.clientY - rect.top;
+
+  let hitNode = null;
+  for (const node of (lastDrawnGraph.nodes || [])) {
+    const pos = lastNodePositions[node.id];
+    if (!pos) continue;
+    const dist = Math.hypot(clickX - pos.x, clickY - pos.y);
+    if (dist <= 22) {
+      hitNode = node;
+      break;
+    }
+  }
+
+  if (!hitNode) {
+    inspector.classList.add("hidden");
+    return;
+  }
+
+  const edges = lastDrawnGraph.edges || [];
+  const outgoing = edges.filter(e => e.from === hitNode.id);
+  const incoming = edges.filter(e => e.to === hitNode.id);
+  inspector.innerHTML = `
+    <div class="font-bold text-slate-900 mb-1">${escapeReportCell(hitNode.label.replace(/\n/g, " — "))}</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+      <div><span class="font-bold text-rose-700">Deputed Out (${outgoing.length}):</span> ${outgoing.length ? outgoing.map(e => `${escapeReportCell(e.employee_name)} (${escapeReportCell(e.employee_id)})`).join(", ") : "None"}</div>
+      <div><span class="font-bold text-emerald-700">Deputed In (${incoming.length}):</span> ${incoming.length ? incoming.map(e => `${escapeReportCell(e.employee_name)} (${escapeReportCell(e.employee_id)})`).join(", ") : "None"}</div>
+    </div>
+  `;
+  inspector.classList.remove("hidden");
 }
 
 function drawDeputationGraph(graph) {
@@ -4147,7 +4262,6 @@ function drawDeputationGraph(graph) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
 
-  // High DPI scaling
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * 2;
   canvas.height = rect.height * 2;
@@ -4158,26 +4272,25 @@ function drawDeputationGraph(graph) {
 
   ctx.clearRect(0, 0, width, height);
 
-  const nodes = graph.nodes || [];
-  const edges = graph.edges || [];
+  const nodes = (graph && graph.nodes) || [];
+  const edges = (graph && graph.edges) || [];
+  lastNodePositions = {};
 
   if (nodes.length === 0) {
-    ctx.fillStyle = "#64748b";
+    ctx.fillStyle = "#94a3b8";
     ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("No deputation links to render in current view", width / 2, height / 2);
     return;
   }
 
-  // Layout nodes around circle or grid
-  const nodePositions = {};
-  const radius = Math.min(width, height) * 0.38;
+  const radius = nodes.length === 1 ? 0 : Math.min(width, height) * 0.36;
   const centerX = width / 2;
   const centerY = height / 2;
 
   nodes.forEach((node, i) => {
-    const angle = (i / nodes.length) * 2 * Math.PI - Math.PI / 2;
-    nodePositions[node.id] = {
+    const angle = (i / Math.max(nodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
+    lastNodePositions[node.id] = {
       x: centerX + radius * Math.cos(angle),
       y: centerY + radius * Math.sin(angle),
       label: node.label.split("\n")[0],
@@ -4185,10 +4298,10 @@ function drawDeputationGraph(graph) {
     };
   });
 
-  // Draw Edges (Directed Arrows)
-  edges.forEach(edge => {
-    const fromPos = nodePositions[edge.from];
-    const toPos = nodePositions[edge.to];
+  // Draw Edges (Directed Arrows + Employee Labels)
+  edges.forEach((edge, idx) => {
+    const fromPos = lastNodePositions[edge.from];
+    const toPos = lastNodePositions[edge.to];
     if (fromPos && toPos) {
       ctx.beginPath();
       ctx.moveTo(fromPos.x, fromPos.y);
@@ -4197,7 +4310,6 @@ function drawDeputationGraph(graph) {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Arrow head
       const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
       const arrowLen = 10;
       const arrowX = toPos.x - 18 * Math.cos(angle);
@@ -4209,14 +4321,20 @@ function drawDeputationGraph(graph) {
       ctx.lineTo(arrowX - arrowLen * Math.cos(angle + Math.PI / 6), arrowY - arrowLen * Math.sin(angle + Math.PI / 6));
       ctx.fillStyle = edge.service_status === "WORKING" ? "#10b981" : "#f59e0b";
       ctx.fill();
+
+      const midX = (fromPos.x + toPos.x) / 2;
+      const midY = (fromPos.y + toPos.y) / 2 + ((idx % 2 === 0 ? -1 : 1) * 7);
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(edge.employee_name || edge.employee_id).substring(0, 18), midX, midY);
     }
   });
 
   // Draw Nodes
   nodes.forEach(node => {
-    const pos = nodePositions[node.id];
+    const pos = lastNodePositions[node.id];
     if (pos) {
-      // Circle
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 16, 0, 2 * Math.PI);
       ctx.fillStyle = node.type === "GP" ? "#1e3a8a" : "#7c3aed";
@@ -4225,11 +4343,10 @@ function drawDeputationGraph(graph) {
       ctx.strokeStyle = "#ffffff";
       ctx.stroke();
 
-      // Label
       ctx.fillStyle = "#e2e8f0";
       ctx.font = "bold 9px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(pos.label.substring(0, 14), pos.x, pos.y + 26);
+      ctx.fillText(pos.label.substring(0, 16), pos.x, pos.y + 26);
     }
   });
 }
@@ -4448,11 +4565,12 @@ async function submitVerificationAction(postingId, action, originalGpLgd) {
 // ==========================================
 async function renderDiscrepanciesView() {
   const container = document.getElementById("view-discrepancies");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   container.innerHTML = `
     <div class="flex justify-between items-center mb-5">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">District Discrepancy Detection & Resolution Centre</h2>
-        <p class="text-xs text-slate-500">Automated 19-rule discrepancy detection engine across all 571 GPs (Section 15)</p>
+        <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal Discrepancy Engine` : "District Discrepancy Detection & Resolution Centre"}</h2>
+        <p class="text-xs text-slate-500">${isMandal ? `Discrepancy checks strictly scoped to ${currentUser.mandal_name} Mandal` : "Automated 19-rule discrepancy detection engine across all 571 GPs (Section 15)"}</p>
       </div>
       <div>
         <button onclick="triggerDiscrepancyScan()" class="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded text-xs font-bold flex items-center shadow">
@@ -4475,9 +4593,10 @@ async function renderDiscrepanciesView() {
 }
 
 async function triggerDiscrepancyScan() {
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   try {
     const res = await fetchAPI("/discrepancies/scan");
-    alert(`Scan completed: ${res.total_discrepancies_detected} issue(s) detected across Khammam District.`);
+    alert(`Scan completed: ${res.total_discrepancies_detected} issue(s) detected ${isMandal ? `for ${currentUser.mandal_name} Mandal` : "across Khammam District"}.`);
     loadDiscrepanciesData();
   } catch (err) {
     alert("Scan failed: " + (err.detail || err.message));
@@ -4584,14 +4703,16 @@ async function handleResolveDiscrepancy(e, discId) {
 // ==========================================
 async function renderAvailabilityView() {
   const container = document.getElementById("view-availability");
+  const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
+  const myMandalId = isMandal ? String(currentUser.mandal_id || "") : "";
   container.innerHTML = `
     <div class="flex justify-between items-center mb-5">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">Actual Employee Availability Management</h2>
-        <p class="text-xs text-slate-500">Classification of staff by physical availability for regular duty across Khammam District</p>
+        <h2 class="text-xl font-bold text-slate-900">${isMandal ? `${currentUser.mandal_name} Mandal Actual Staff Availability` : "Actual Employee Availability Management"}</h2>
+        <p class="text-xs text-slate-500">${isMandal ? `Physical duty availability for Panchayat Secretaries in ${currentUser.mandal_name} Mandal` : "Classification of staff by physical availability for regular duty across Khammam District"}</p>
       </div>
       <div>
-        <button onclick="downloadReportExcel('O')" class="px-3.5 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow">
+        <button onclick="downloadReportExcel('O', '${myMandalId}')" class="px-3.5 py-1.5 bg-govblue-900 hover:bg-govblue-800 text-white rounded text-xs font-semibold flex items-center shadow">
           <i data-lucide="download" class="w-3.5 h-3.5 mr-1.5"></i> Export Unavailable Staff Report (O)
         </button>
       </div>

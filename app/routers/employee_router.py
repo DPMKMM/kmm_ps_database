@@ -15,7 +15,7 @@ from app.schemas import (
     EmployeeStage1Create, EmployeeStage2SalaryMapping, EmployeeStage3WorkingMapping,
     EmployeeCombinedStage2And3Mapping, InternalReassignmentCreate
 )
-from app.auth import get_current_user, require_super_admin, enforce_mandal_isolation
+from app.auth import get_current_user, require_super_admin, enforce_mandal_isolation, enforce_employee_mandal_scope
 
 router = APIRouter(prefix="/api/employees", tags=["Employee Management"])
 
@@ -348,14 +348,16 @@ def list_employees(
         query = query.filter(
             or_(
                 EmployeeSalaryMapping.salary_mandal_id == current_user.mandal_id,
-                EmployeePosting.actual_working_mandal_id == current_user.mandal_id
+                EmployeePosting.actual_working_mandal_id == current_user.mandal_id,
+                EmployeePosting.official_deputation_mandal_id == current_user.mandal_id
             )
         )
     elif mandal_id:
         query = query.filter(
             or_(
                 EmployeeSalaryMapping.salary_mandal_id == mandal_id,
-                EmployeePosting.actual_working_mandal_id == mandal_id
+                EmployeePosting.actual_working_mandal_id == mandal_id,
+                EmployeePosting.official_deputation_mandal_id == mandal_id
             )
         )
         
@@ -441,11 +443,8 @@ def list_employees(
         "items": results
     }
 
-@router.get("/stage1-list")
-def list_stage1_employees(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+def _query_active_employees(db: Session, current_user: User):
+    """Query active employees scoped cleanly to concerned Mandal when MANDAL_ADMIN."""
     query = db.query(Employee).filter(Employee.is_active == True)
     if current_user.role == "MANDAL_ADMIN":
         query = query.filter(
@@ -456,18 +455,41 @@ def list_stage1_employees(
                         EmployeeSalaryMapping.salary_mandal_id == current_user.mandal_id,
                         EmployeeSalaryMapping.is_active == True
                     )
+                ),
+                Employee.employee_id.in_(
+                    db.query(EmployeePosting.employee_id).filter(
+                        or_(
+                            EmployeePosting.actual_working_mandal_id == current_user.mandal_id,
+                            EmployeePosting.official_deputation_mandal_id == current_user.mandal_id
+                        ),
+                        EmployeePosting.is_current == True
+                    )
                 )
             )
         )
-    emps = query.order_by(Employee.name_ifmis.asc()).all()
-    
+    return query.order_by(Employee.name_ifmis.asc()).all()
+
+
+@router.get("/stage1-list")
+def list_stage1_employees(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    emps = _query_active_employees(db, current_user)
     results = []
     for e in emps:
         sm = db.query(EmployeeSalaryMapping).filter(EmployeeSalaryMapping.employee_id == e.employee_id, EmployeeSalaryMapping.is_active == True).first()
         p = db.query(EmployeePosting).filter(EmployeePosting.employee_id == e.employee_id, EmployeePosting.is_current == True).first()
-        dob_str = "N/A"
-        if e.dob:
-            dob_str = e.dob.strftime("%Y-%m-%d") if hasattr(e.dob, "strftime") else str(e.dob)
+        can_view_dob = (
+            current_user.role == "SUPER_ADMIN"
+            or (current_user.role == "MANDAL_ADMIN" and (
+                e.registration_mandal_id == current_user.mandal_id
+                or (sm and sm.salary_mandal_id == current_user.mandal_id)
+            ))
+        )
+        dob_str = "Restricted"
+        if can_view_dob:
+            dob_str = (e.dob.strftime("%Y-%m-%d") if hasattr(e.dob, "strftime") else str(e.dob)) if e.dob else "N/A"
         results.append({
             "employee_id": e.employee_id,
             "name_ifmis": e.name_ifmis,
@@ -483,25 +505,13 @@ def list_stage1_employees(
         })
     return results
 
+
 @router.get("/dropdown-list")
 def get_employees_dropdown(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Employee).filter(Employee.is_active == True)
-    if current_user.role == "MANDAL_ADMIN":
-        query = query.filter(
-            or_(
-                Employee.registration_mandal_id == current_user.mandal_id,
-                Employee.employee_id.in_(
-                    db.query(EmployeeSalaryMapping.employee_id).filter(
-                        EmployeeSalaryMapping.salary_mandal_id == current_user.mandal_id,
-                        EmployeeSalaryMapping.is_active == True
-                    )
-                )
-            )
-        )
-    emps = query.order_by(Employee.name_ifmis.asc()).all()
+    emps = _query_active_employees(db, current_user)
     return [
         {
             "id": e.employee_id,
@@ -525,19 +535,14 @@ def get_employee_profile(
     emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-        
+
+    enforce_employee_mandal_scope(db, current_user, emp.employee_id, allow_viewer=True)
+
     salary_map = (
         db.query(EmployeeSalaryMapping)
         .filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True)
         .first()
     )
-    
-    if current_user.role == "MANDAL_ADMIN":
-        # Check if salary or working in this mandal
-        current_post = db.query(EmployeePosting).filter(EmployeePosting.employee_id == emp.employee_id, EmployeePosting.is_current == True).first()
-        if salary_map and salary_map.salary_mandal_id != current_user.mandal_id:
-            if not current_post or current_post.actual_working_mandal_id != current_user.mandal_id:
-                raise HTTPException(status_code=403, detail="Access denied: Employee not assigned to your Mandal")
 
     # Postings history
     postings = (
@@ -659,9 +664,8 @@ def update_employee(
         .filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True)
         .first()
     )
-    
-    if current_user.role == "MANDAL_ADMIN" and salary_map:
-        enforce_mandal_isolation(current_user, salary_map.salary_mandal_id)
+
+    enforce_employee_mandal_scope(db, current_user, emp.employee_id, allow_viewer=False)
         
     now = datetime.utcnow()
     
@@ -969,7 +973,8 @@ def get_stage3_employee_info(
     emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-        
+    enforce_employee_mandal_scope(db, current_user, emp.employee_id, allow_viewer=True)
+
     sm = db.query(EmployeeSalaryMapping).filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True).first()
     sh = db.query(EmployeeStatusHistory).filter(EmployeeStatusHistory.employee_id == emp.employee_id, EmployeeStatusHistory.is_current == True).first()
     p = db.query(EmployeePosting).filter(EmployeePosting.employee_id == emp.employee_id, EmployeePosting.is_current == True).first()
@@ -1025,6 +1030,7 @@ def stage3_map_working_station(
     sm = db.query(EmployeeSalaryMapping).filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True).first()
     if not sm:
         raise HTTPException(status_code=400, detail="Please complete Stage 2 (Salary GP Mapping) before mapping working station.")
+    enforce_mandal_isolation(current_user, sm.salary_mandal_id)
         
     now = datetime.utcnow()
     
@@ -1368,6 +1374,8 @@ def create_internal_reassignment(
 
     if not posting:
         raise HTTPException(status_code=404, detail="Active posting record not found for this employee.")
+
+    enforce_employee_mandal_scope(db, current_user, posting.employee_id, allow_viewer=False)
         
     new_gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == payload.reassigned_to_gp_lgd).first()
     if not new_gp:
@@ -1458,6 +1466,7 @@ def get_employee_internal_reassignments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    enforce_employee_mandal_scope(db, current_user, employee_id, allow_viewer=True)
     reassignments = (
         db.query(InternalReassignment)
         .filter(InternalReassignment.employee_id == employee_id)

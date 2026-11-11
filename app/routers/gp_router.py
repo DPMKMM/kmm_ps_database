@@ -45,8 +45,8 @@ def get_gram_panchayats(
     query = db.query(GramPanchayat)
     
     # Strict backend enforcement:
-    # If user is a MANDAL_ADMIN and requesting GPs for salary claiming, force filter to their own Mandal!
-    if current_user.role == "MANDAL_ADMIN" and (for_salary_entry or mandal_id is None):
+    # A MANDAL_ADMIN can only list Gram Panchayats belonging to their own Mandal.
+    if current_user.role == "MANDAL_ADMIN":
         query = query.filter(GramPanchayat.mandal_id == current_user.mandal_id)
     elif mandal_id:
         query = query.filter(GramPanchayat.mandal_id == mandal_id)
@@ -92,6 +92,8 @@ def get_gram_panchayat_detail(
     gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == lgd_code).first()
     if not gp:
         raise HTTPException(status_code=404, detail="Gram Panchayat not found")
+
+    enforce_mandal_isolation(current_user, gp.mandal_id)
         
     # Find employees drawing salary from this GP
     salary_employees = (
@@ -170,7 +172,7 @@ def update_clear_vacancy(
     gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == lgd_code).first()
     if not gp:
         raise HTTPException(status_code=404, detail="Gram Panchayat not found")
-        
+
     enforce_mandal_isolation(current_user, gp.mandal_id)
     
     # If marking as clear vacancy, check if an active working employee is mapped to it

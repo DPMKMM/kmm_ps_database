@@ -760,6 +760,10 @@ def build_report_data(code: str, mandal_id: Optional[int], gp_lgd: Optional[int]
     elif code == "N":
         return _build_leave_report(base_emp_query(), {"EARNED_LEAVE", "EXTRAORDINARY_LEAVE", "OTHER_APPROVED_LEAVE", "OTHER"})
 
+    # Report Q: Employee-wise Deputation Chain Report
+    elif code == "Q":
+        return _build_deputed_ps_report(base_emp_query())
+
     # Report P: Expected Joining Date Crossed Report
     elif code == "P":
         headers = ["S.No", "Employee ID", "Employee Name", "Salary GP", "Salary Mandal", "Current Status", "Expected Joining Date", "Days Overdue", "Alert Notice"]

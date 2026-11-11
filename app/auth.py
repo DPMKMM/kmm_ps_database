@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import User, UserSession, LoginHistory, AuditLog
+from app.models import (
+    User, UserSession, LoginHistory, AuditLog,
+    Employee, EmployeeSalaryMapping, EmployeePosting
+)
 
 ph = PasswordHasher()
 security = HTTPBearer(auto_error=False)
@@ -321,3 +324,49 @@ def enforce_mandal_isolation(current_user: User, mandal_id: int):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions"
         )
+
+
+def enforce_employee_mandal_scope(
+    db: Session,
+    current_user: User,
+    employee_id: str,
+    allow_viewer: bool = True
+):
+    """
+    Ensure a MANDAL_ADMIN can only access employees registered, claiming salary,
+    or currently working/officially deputed in their concerned Mandal.
+    """
+    if current_user.role == "SUPER_ADMIN":
+        return
+    if current_user.role == "VIEWER":
+        if allow_viewer:
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Read-only viewer access")
+    if current_user.role != "MANDAL_ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+    if emp and emp.registration_mandal_id == current_user.mandal_id:
+        return
+
+    sm = db.query(EmployeeSalaryMapping).filter(
+        EmployeeSalaryMapping.employee_id == employee_id,
+        EmployeeSalaryMapping.is_active == True
+    ).first()
+    if sm and sm.salary_mandal_id == current_user.mandal_id:
+        return
+
+    post = db.query(EmployeePosting).filter(
+        EmployeePosting.employee_id == employee_id,
+        EmployeePosting.is_current == True
+    ).first()
+    if post and (
+        post.actual_working_mandal_id == current_user.mandal_id
+        or post.official_deputation_mandal_id == current_user.mandal_id
+    ):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied: Employee is not assigned to your Mandal."
+    )

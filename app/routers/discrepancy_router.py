@@ -181,11 +181,17 @@ def run_discrepancy_scan(
             db.add(new_rec)
             
     db.commit()
-    
+
+    visible_items = (
+        [d for d in discrepancies_found if d.get("mandal_id") == current_user.mandal_id]
+        if current_user.role == "MANDAL_ADMIN"
+        else discrepancies_found
+    )
+
     return {
         "status": "Scan completed",
-        "total_discrepancies_detected": len(discrepancies_found),
-        "items": discrepancies_found
+        "total_discrepancies_detected": len(visible_items),
+        "items": visible_items
     }
 
 @router.get("")
