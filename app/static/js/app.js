@@ -1446,8 +1446,9 @@ async function loadStage1EmployeesList() {
           <td class="px-3.5 py-2.5 text-slate-600">${emp.registration_mandal_name || 'N/A'}</td>
           <td class="px-3.5 py-2.5 text-center">${s2Badge}</td>
           <td class="px-3.5 py-2.5 text-center">${s3Badge}</td>
-          <td class="px-3.5 py-2.5 text-right space-x-1">
-            <button onclick="proceedToStage2('${emp.employee_id}')" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-[11px] font-semibold transition" title="Map Salary GP & Working Station">
+          <td class="px-3.5 py-2.5 text-right space-x-1 whitespace-nowrap">
+            ${emp.can_edit !== false && currentUser?.role !== "VIEWER" ? `<button onclick="openEditEmployeeModal('${escapeReportCell(emp.employee_id)}')" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[11px] font-semibold transition" title="Edit Employee Data">Edit</button>` : ""}
+            <button onclick="proceedToStage2('${escapeReportCell(emp.employee_id)}')" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-[11px] font-semibold transition" title="Map Salary GP & Working Station">
               Map Salary & Station →
             </button>
           </td>
@@ -2832,11 +2833,19 @@ function filterReconciliationTable() {
       ? `<span class="font-bold text-pink-700">${row[13]}</span>`
       : `<span class="text-slate-400">N/A</span>`;
 
+    const canEditReconRow = currentUser && (
+      currentUser.role === "SUPER_ADMIN" ||
+      (currentUser.role === "MANDAL_ADMIN" && String(row[6] || "").toLowerCase() === String(currentUser.mandal_name || "").toLowerCase())
+    );
+
     rowsHtml += `
       <tr class="hover:bg-slate-50/80">
         <td class="px-2.5 py-2 font-mono text-[10px] text-slate-400">${idx + 1}</td>
-        <td class="px-2.5 py-2 font-bold text-slate-900">${row[1]}</td>
-        <td class="px-2.5 py-2 font-mono font-bold text-govblue-900">${row[2]}</td>
+        <td class="px-2.5 py-2 font-bold text-slate-900">
+          <span>${escapeReportCell(row[1])}</span>
+          ${canEditReconRow ? `<button onclick="openEditEmployeeModal('${escapeReportCell(row[2])}')" class="ml-1.5 px-1.5 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[10px] font-bold no-print" title="Edit Employee Record">Edit</button>` : ""}
+        </td>
+        <td class="px-2.5 py-2 font-mono font-bold text-govblue-900">${escapeReportCell(row[2])}</td>
         <td class="px-2.5 py-2 font-mono text-slate-600">${row[3]}</td>
         <td class="px-2.5 py-2 text-slate-600">${row[4]}</td>
         <td class="px-2.5 py-2 font-semibold text-teal-900">${row[5]}</td>
@@ -3809,8 +3818,9 @@ async function loadEmployeeMasterData() {
           <td class="px-3.5 py-2.5 text-slate-600">${e.posting_type}</td>
           <td class="px-3.5 py-2.5">${statusBadge}</td>
           <td class="px-3.5 py-2.5">${verifBadge}</td>
-          <td class="px-3.5 py-2.5 text-right">
-            <button onclick="viewEmployeeProfile('${e.employee_id}')" class="px-2 py-1 bg-govblue-50 text-govblue-900 hover:bg-govblue-100 rounded text-[11px] font-semibold">Profile</button>
+          <td class="px-3.5 py-2.5 text-right whitespace-nowrap space-x-1">
+            ${e.can_edit ? `<button onclick="openEditEmployeeModal('${escapeReportCell(e.employee_id)}')" class="px-2 py-1 bg-amber-100 text-amber-900 hover:bg-amber-200 rounded text-[11px] font-semibold">Edit</button>` : ""}
+            <button onclick="viewEmployeeProfile('${escapeReportCell(e.employee_id)}')" class="px-2 py-1 bg-govblue-50 text-govblue-900 hover:bg-govblue-100 rounded text-[11px] font-semibold">Profile</button>
           </td>
         </tr>
       `;
@@ -3864,7 +3874,10 @@ async function viewEmployeeProfile(empId) {
             <div class="text-lg font-bold">${p.name_ifmis}</div>
             <div class="font-mono text-xs text-slate-300">Employee ID: <strong class="text-white">${p.employee_id}</strong> | Mobile: <a href="tel:${p.mobile_number}" class="text-amber-300 hover:underline font-bold">${p.mobile_number || 'N/A'}</a> | DOB: ${p.dob}</div>
           </div>
-          <div>${statusBadge}</div>
+          <div class="flex items-center space-x-2">
+            ${p.can_edit ? `<button onclick="openEditEmployeeModal('${escapeReportCell(p.employee_id)}')" class="px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded text-xs shadow flex items-center gap-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit Record</button>` : ""}
+            ${statusBadge}
+          </div>
         </div>
         
         <div class="grid grid-cols-2 gap-3 pt-3 border-t border-white/20 text-xs">
@@ -3917,6 +3930,433 @@ async function viewEmployeeProfile(empId) {
     openModal(`Profile: ${p.name_ifmis} (${p.employee_id})`, bodyHtml);
   } catch (err) {
     alert("Failed to load profile: " + (err.detail || err.message));
+  }
+}
+
+const EDIT_DESIGNATION_OPTIONS = [
+  "Panchayat Secretary Grade-IV",
+  "Panchayat Secretary Grade-III",
+  "Panchayat Secretary Grade-II",
+  "Panchayat Secretary Grade-I",
+  "Junior Panchayat Secretary (JPS)",
+  "OPS (Out Sourcing Panchayat Secretary)",
+  "Temporary / Incharge Panchayat Secretary",
+  "Panchayat Secretary"
+];
+
+const EDIT_SERVICE_STATUS_OPTIONS = [
+  ["WORKING", "Working"],
+  ["SUSPENDED", "Suspended"],
+  ["ABSCONDING", "Absconding"],
+  ["LONG_LEAVE", "Long Leave"],
+  ["MEDICAL_LEAVE", "Medical Leave"],
+  ["MATERNITY_LEAVE", "Maternity Leave"],
+  ["CHILD_CARE_LEAVE", "Child Care Leave (CCL)"],
+  ["EARNED_LEAVE", "Earned Leave"],
+  ["EXTRAORDINARY_LEAVE", "Extraordinary Leave / Leave Without Pay (EOL)"],
+  ["OTHER_APPROVED_LEAVE", "Other Approved Leave"]
+];
+
+async function openEditEmployeeModal(empId) {
+  try {
+    if (!centralizedPanchayats || centralizedPanchayats.length === 0) {
+      await loadCommonData();
+    }
+    const p = await fetchAPI(`/employees/${encodeURIComponent(empId)}`);
+    if (!p.can_edit) {
+      alert("Only District Super Admin or the employee's salary-claiming Mandal can modify this record.");
+      return;
+    }
+
+    const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
+    const isAdmin = currentUser && currentUser.role === "SUPER_ADMIN";
+    const curDesig = p.designation || "Panchayat Secretary Grade-IV";
+
+    let desigOptions = EDIT_DESIGNATION_OPTIONS.includes(curDesig)
+      ? ""
+      : `<option value="${escapeReportCell(curDesig)}" selected>${escapeReportCell(curDesig)}</option>`;
+    EDIT_DESIGNATION_OPTIONS.forEach(d => {
+      desigOptions += `<option value="${escapeReportCell(d)}" ${curDesig === d ? "selected" : ""}>${escapeReportCell(d)}</option>`;
+    });
+
+    const regMandalOptions = isAdmin
+      ? cachedMandals.map(m => `<option value="${m.id}" ${Number(p.registration_mandal_id) === Number(m.id) ? "selected" : ""}>${escapeReportCell(m.mandal_name)} (LGD: ${m.mandal_lgd})</option>`).join("")
+      : `<option value="${p.registration_mandal_id || currentUser.mandal_id}" selected>${escapeReportCell(p.registration_mandal_name !== "N/A" ? p.registration_mandal_name : currentUser.mandal_name)}</option>`;
+
+    const allowedSalaryGps = isMandal
+      ? centralizedPanchayats.filter(gp => gp.mandal_id === currentUser.mandal_id)
+      : centralizedPanchayats;
+    let salGpOptions = `<option value="">-- Not Mapped Yet --</option>`;
+    allowedSalaryGps.forEach(gp => {
+      const sel = Number(p.salary_gp_lgd) === Number(gp.lgd_code) ? "selected" : "";
+      const label = isMandal ? `${gp.gp_name} (LGD: ${gp.lgd_code})` : `${gp.gp_name} — ${gp.mandal_name} (LGD: ${gp.lgd_code})`;
+      salGpOptions += `<option value="${gp.lgd_code}" data-mandal-id="${gp.mandal_id}" data-mandal-name="${escapeReportCell(gp.mandal_name)}" ${sel}>${escapeReportCell(label)}</option>`;
+    });
+
+    const curStatus = (p.current_service_status && p.current_service_status.service_status) || "WORKING";
+    const statusOptions = EDIT_SERVICE_STATUS_OPTIONS.map(([val, lbl]) =>
+      `<option value="${val}" ${curStatus === val ? "selected" : ""}>${escapeReportCell(lbl)}</option>`
+    ).join("");
+
+    const cp = p.current_posting || {};
+    const isWorkingSame = cp.is_working_in_salary_gp !== false;
+    const postingType = (cp.posting_type && cp.posting_type !== "OWN_GP") ? cp.posting_type : "WITHIN_MANDAL";
+
+    let anotherMandalOpts = `<option value="">-- Select Destination Mandal --</option>`;
+    cachedMandals.forEach(m => {
+      const sel = Number(cp.actual_working_mandal_id) === Number(m.id) ? "selected" : "";
+      anotherMandalOpts += `<option value="${m.id}" ${sel}>${escapeReportCell(m.mandal_name)} (LGD: ${m.mandal_lgd})</option>`;
+    });
+
+    const mobileVal = (p.mobile_number && p.mobile_number !== "N/A") ? p.mobile_number : "";
+    const hasSalaryOrPosting = Boolean(p.salary_gp_lgd);
+
+    const bodyHtml = `
+      <form id="edit-employee-form" onsubmit="handleEditEmployeeSubmit(event, '${escapeReportCell(p.employee_id)}')" class="space-y-4 text-xs text-slate-700">
+        <!-- Section 1: Basic Details -->
+        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+          <div class="flex justify-between items-center border-b border-slate-200 pb-1.5">
+            <h4 class="font-bold text-slate-900 uppercase tracking-wider flex items-center">
+              <i data-lucide="user" class="w-3.5 h-3.5 mr-1.5 text-amber-600"></i> 1. Basic Employee Details
+            </h4>
+            <span class="font-mono font-bold text-govblue-900">ID: ${escapeReportCell(p.employee_id)}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Employee Name <span class="text-rose-600">*</span></label>
+              <input type="text" id="edit-emp-name" required value="${escapeReportCell(p.name_ifmis)}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Mobile Number</label>
+              <input type="tel" id="edit-emp-mobile" maxlength="10" value="${escapeReportCell(mobileVal)}" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)" placeholder="10-digit mobile number" class="w-full p-2 border border-slate-300 rounded bg-white font-mono outline-none">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Designation</label>
+              <select id="edit-emp-designation" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">${desigOptions}</select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Date of Birth</label>
+              <input type="date" id="edit-emp-dob" value="${escapeReportCell(p.dob_raw || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+            </div>
+            <div class="md:col-span-2">
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Registration Mandal</label>
+              <select id="edit-emp-reg-mandal" ${isMandal ? "disabled" : ""} class="w-full p-2 border border-slate-300 rounded bg-white disabled:bg-slate-100 outline-none">${regMandalOptions}</select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Salary Claiming Mapping -->
+        <div class="p-4 bg-teal-50/40 rounded-lg border border-teal-200 space-y-3">
+          <h4 class="font-bold text-teal-950 uppercase tracking-wider flex items-center border-b border-teal-200 pb-1.5">
+            <i data-lucide="wallet" class="w-3.5 h-3.5 mr-1.5 text-teal-700"></i> 2. Salary-Claiming Gram Panchayat
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="md:col-span-2">
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Salary-Claiming GP</label>
+              <select id="edit-emp-salary-gp" onchange="handleEditSalaryGPChange()" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">${salGpOptions}</select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Claiming Salary?</label>
+              <select id="edit-emp-salary-status" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+                <option value="YES" ${(p.salary_claiming_status || "YES") === "YES" ? "selected" : ""}>YES (Claiming Here)</option>
+                <option value="NO" ${p.salary_claiming_status === "NO" ? "selected" : ""}>NO (Suspended/EOL)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Working / Effective From</label>
+              <input type="date" id="edit-emp-salary-effective" value="${escapeReportCell(p.salary_effective_from || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Service Status -->
+        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+          <h4 class="font-bold text-slate-900 uppercase tracking-wider flex items-center border-b border-slate-200 pb-1.5">
+            <i data-lucide="activity" class="w-3.5 h-3.5 mr-1.5 text-govblue-800"></i> 3. Service Status
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Current Service Status</label>
+              <select id="edit-emp-service-status" onchange="handleEditServiceStatusChange()" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none">${statusOptions}</select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Status Remarks</label>
+              <input type="text" id="edit-emp-status-remarks" value="${escapeReportCell(p.current_service_status?.reason_remarks || '')}" placeholder="Optional remarks..." class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+            </div>
+          </div>
+          <div id="edit-status-details" class="${curStatus === 'WORKING' ? 'hidden' : ''} grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-white rounded border border-slate-200">
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Proceedings / Order No</label>
+              <input type="text" id="edit-emp-status-order-no" value="${escapeReportCell(p.current_service_status?.proceedings_order_no || '')}" class="w-full p-1.5 border border-slate-300 rounded outline-none">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Effective / Order Date</label>
+              <input type="date" id="edit-emp-status-effective" value="${escapeReportCell(p.current_service_status?.effective_from || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Expected Joining Date</label>
+              <input type="date" id="edit-emp-expected-joining" value="${escapeReportCell(p.current_service_status?.expected_joining_date || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Working Station & Deputation -->
+        <div id="edit-posting-section" class="${hasSalaryOrPosting ? '' : 'hidden'} p-4 bg-indigo-50/40 rounded-lg border border-indigo-200 space-y-3">
+          <h4 class="font-bold text-indigo-950 uppercase tracking-wider flex items-center border-b border-indigo-200 pb-1.5">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 mr-1.5 text-indigo-700"></i> 4. Working Station & Deputation
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="flex items-center space-x-2 p-2.5 bg-white rounded border border-slate-300 cursor-pointer">
+              <input type="radio" name="edit-working-same" value="YES" ${isWorkingSame ? "checked" : ""} onchange="handleEditWorkingSameChange()">
+              <span class="font-bold text-slate-800">YES — Working in Salary GP</span>
+            </label>
+            <label class="flex items-center space-x-2 p-2.5 bg-white rounded border border-slate-300 cursor-pointer">
+              <input type="radio" name="edit-working-same" value="NO" ${!isWorkingSame ? "checked" : ""} onchange="handleEditWorkingSameChange()">
+              <span class="font-bold text-slate-800">NO — Deputed Elsewhere</span>
+            </label>
+          </div>
+
+          <div id="edit-deputation-panel" class="${isWorkingSame ? 'hidden' : ''} p-3 bg-amber-50/70 rounded border border-amber-200 space-y-3">
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Posting / Deputation Type</label>
+              <select id="edit-posting-type" onchange="handleEditPostingTypeChange()" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+                <option value="WITHIN_MANDAL" ${postingType === "WITHIN_MANDAL" ? "selected" : ""}>Deputed to another GP within the same Mandal</option>
+                <option value="ANOTHER_MANDAL" ${postingType === "ANOTHER_MANDAL" ? "selected" : ""}>Deputed to another Mandal in Khammam District</option>
+                <option value="OTHER_DISTRICT" ${postingType === "OTHER_DISTRICT" ? "selected" : ""}>Deputed to Another District</option>
+                <option value="OTHER_DEPARTMENT" ${postingType === "OTHER_DEPARTMENT" ? "selected" : ""}>Deputed to Another Department</option>
+              </select>
+            </div>
+
+            <div id="edit-dest-within-mandal" class="${postingType === 'WITHIN_MANDAL' ? '' : 'hidden'}">
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Destination GP (Same Mandal)</label>
+              <select id="edit-same-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none"></select>
+            </div>
+
+            <div id="edit-dest-another-mandal" class="${postingType === 'ANOTHER_MANDAL' ? '' : 'hidden'} grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Destination Mandal</label>
+                <select id="edit-another-mandal-select" onchange="handleEditDestMandalChange()" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">${anotherMandalOpts}</select>
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Destination GP</label>
+                <select id="edit-another-mandal-gp" class="w-full p-2 border border-slate-300 rounded bg-white outline-none"></select>
+              </div>
+            </div>
+
+            <div id="edit-dest-other-dist" class="${postingType === 'OTHER_DISTRICT' ? '' : 'hidden'} grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">External District</label>
+                <input type="text" id="edit-other-dist-name" value="${escapeReportCell(cp.external_district_name || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">External Mandal / GP / Office</label>
+                <input type="text" id="edit-other-dist-office" value="${escapeReportCell(cp.external_gp_or_office_name || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+              </div>
+            </div>
+
+            <div id="edit-dest-other-dept" class="${postingType === 'OTHER_DEPARTMENT' ? '' : 'hidden'} grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">External Department</label>
+                <input type="text" id="edit-other-dept-name" value="${escapeReportCell(cp.external_department_name || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Assigned Office / Post</label>
+                <input type="text" id="edit-other-dept-office" value="${escapeReportCell(cp.external_gp_or_office_name || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-amber-200">
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Deputation Order No</label>
+                <input type="text" id="edit-dep-order-no" value="${escapeReportCell(cp.deputation_order_no || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Order Date</label>
+                <input type="date" id="edit-dep-order-date" value="${escapeReportCell(cp.deputation_order_date || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Effective From</label>
+                <input type="date" id="edit-dep-effective-date" value="${escapeReportCell(cp.deputation_effective_from || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+              </div>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Deputation Remarks</label>
+              <input type="text" id="edit-dep-remarks" value="${escapeReportCell(cp.remarks || '')}" class="w-full p-1.5 border border-slate-300 rounded bg-white outline-none">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded">Cancel</button>
+          <button type="submit" id="btn-save-edit-emp" class="px-5 py-2 bg-govblue-900 hover:bg-govblue-800 text-white font-bold rounded shadow flex items-center gap-1.5">
+            <i data-lucide="save" class="w-4 h-4"></i> Save Changes
+          </button>
+        </div>
+      </form>
+    `;
+
+    openModal(`Modify Individual Record: ${p.name_ifmis} (${p.employee_id})`, bodyHtml);
+
+    // Initialize dynamic destination GP dropdowns after modal mounts
+    handleEditSalaryGPChange(cp.actual_working_gp_lgd);
+    if (postingType === "ANOTHER_MANDAL" && cp.actual_working_mandal_id) {
+      handleEditDestMandalChange(cp.actual_working_gp_lgd);
+    }
+  } catch (err) {
+    alert("Failed to load employee details for editing: " + (err.detail || err.message));
+  }
+}
+
+function handleEditSalaryGPChange(preselectGpLgd = null) {
+  const salSel = document.getElementById("edit-emp-salary-gp");
+  const postingSec = document.getElementById("edit-posting-section");
+  const sameGpSel = document.getElementById("edit-same-mandal-gp");
+  if (!salSel) return;
+
+  if (postingSec) {
+    postingSec.classList.toggle("hidden", !salSel.value);
+  }
+  const opt = salSel.options[salSel.selectedIndex];
+  const mId = opt ? parseInt(opt.getAttribute("data-mandal-id")) : (currentUser?.mandal_id || null);
+  if (sameGpSel && mId) {
+    const gps = centralizedPanchayats.filter(g => g.mandal_id === mId);
+    const targetVal = preselectGpLgd || sameGpSel.value;
+    sameGpSel.innerHTML = `<option value="">-- Select GP --</option>` + gps.map(g =>
+      `<option value="${g.lgd_code}" ${String(targetVal) === String(g.lgd_code) ? "selected" : ""}>${escapeReportCell(g.gp_name)} (LGD: ${g.lgd_code})</option>`
+    ).join("");
+  }
+}
+
+function handleEditServiceStatusChange() {
+  const st = document.getElementById("edit-emp-service-status")?.value;
+  const wrap = document.getElementById("edit-status-details");
+  if (wrap) wrap.classList.toggle("hidden", st === "WORKING");
+}
+
+function handleEditWorkingSameChange() {
+  const checked = document.querySelector('input[name="edit-working-same"]:checked');
+  const panel = document.getElementById("edit-deputation-panel");
+  if (panel && checked) panel.classList.toggle("hidden", checked.value === "YES");
+}
+
+function handleEditPostingTypeChange() {
+  const type = document.getElementById("edit-posting-type")?.value;
+  document.getElementById("edit-dest-within-mandal")?.classList.toggle("hidden", type !== "WITHIN_MANDAL");
+  document.getElementById("edit-dest-another-mandal")?.classList.toggle("hidden", type !== "ANOTHER_MANDAL");
+  document.getElementById("edit-dest-other-dist")?.classList.toggle("hidden", type !== "OTHER_DISTRICT");
+  document.getElementById("edit-dest-other-dept")?.classList.toggle("hidden", type !== "OTHER_DEPARTMENT");
+}
+
+function handleEditDestMandalChange(preselectGpLgd = null) {
+  const mId = parseInt(document.getElementById("edit-another-mandal-select")?.value);
+  const gpSel = document.getElementById("edit-another-mandal-gp");
+  if (!gpSel) return;
+  if (!mId) {
+    gpSel.innerHTML = `<option value="">-- Select Mandal First --</option>`;
+    return;
+  }
+  const gps = centralizedPanchayats.filter(g => g.mandal_id === mId);
+  gpSel.innerHTML = `<option value="">-- Select Destination GP --</option>` + gps.map(g =>
+    `<option value="${g.lgd_code}" ${String(preselectGpLgd) === String(g.lgd_code) ? "selected" : ""}>${escapeReportCell(g.gp_name)} (LGD: ${g.lgd_code})</option>`
+  ).join("");
+}
+
+async function handleEditEmployeeSubmit(e, empId) {
+  e.preventDefault();
+  const btn = document.getElementById("btn-save-edit-emp");
+  const salGpVal = document.getElementById("edit-emp-salary-gp").value;
+  const payload = {
+    name_ifmis: document.getElementById("edit-emp-name").value.trim(),
+    mobile_number: document.getElementById("edit-emp-mobile").value.trim() || null,
+    designation: document.getElementById("edit-emp-designation").value,
+    dob: document.getElementById("edit-emp-dob").value || null,
+    service_status: document.getElementById("edit-emp-service-status").value,
+    proceedings_order_no: document.getElementById("edit-emp-status-order-no").value.trim() || null,
+    status_effective_from: document.getElementById("edit-emp-status-effective").value || null,
+    expected_joining_date: document.getElementById("edit-emp-expected-joining").value || null,
+    reason_remarks: document.getElementById("edit-emp-status-remarks").value.trim() || null
+  };
+
+  if (currentUser && currentUser.role === "SUPER_ADMIN") {
+    const regM = document.getElementById("edit-emp-reg-mandal").value;
+    if (regM) payload.registration_mandal_id = parseInt(regM);
+  }
+
+  if (salGpVal) {
+    payload.salary_gp_lgd = parseInt(salGpVal);
+    payload.salary_claiming_status = document.getElementById("edit-emp-salary-status").value;
+    payload.salary_effective_from = document.getElementById("edit-emp-salary-effective").value || null;
+
+    const isWorkingSame = document.querySelector('input[name="edit-working-same"]:checked')?.value === "YES";
+    payload.is_working_in_salary_gp = isWorkingSame;
+    if (isWorkingSame) {
+      payload.posting_type = "OWN_GP";
+      payload.actual_working_gp_lgd = parseInt(salGpVal);
+    } else {
+      const pType = document.getElementById("edit-posting-type").value;
+      payload.posting_type = pType;
+      if (pType === "WITHIN_MANDAL") {
+        payload.actual_working_gp_lgd = parseInt(document.getElementById("edit-same-mandal-gp").value);
+        if (!payload.actual_working_gp_lgd) {
+          alert("Please select the destination GP within the same Mandal.");
+          return;
+        }
+      } else if (pType === "ANOTHER_MANDAL") {
+        payload.actual_working_gp_lgd = parseInt(document.getElementById("edit-another-mandal-gp").value);
+        if (!payload.actual_working_gp_lgd) {
+          alert("Please select the destination GP in the other Mandal.");
+          return;
+        }
+      } else if (pType === "OTHER_DISTRICT") {
+        payload.external_district_name = document.getElementById("edit-other-dist-name").value.trim();
+        payload.external_gp_or_office_name = document.getElementById("edit-other-dist-office").value.trim();
+        if (!payload.external_district_name) {
+          alert("Please enter the external district name.");
+          return;
+        }
+      } else if (pType === "OTHER_DEPARTMENT") {
+        payload.external_department_name = document.getElementById("edit-other-dept-name").value.trim();
+        payload.external_gp_or_office_name = document.getElementById("edit-other-dept-office").value.trim();
+        if (!payload.external_department_name) {
+          alert("Please enter the external department name.");
+          return;
+        }
+      }
+      payload.deputation_order_no = document.getElementById("edit-dep-order-no").value.trim() || null;
+      payload.deputation_order_date = document.getElementById("edit-dep-order-date").value || null;
+      payload.deputation_effective_from = document.getElementById("edit-dep-effective-date").value || null;
+      payload.deputation_remarks = document.getElementById("edit-dep-remarks").value.trim() || null;
+    }
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+  }
+
+  try {
+    const res = await fetchAPI(`/employees/${encodeURIComponent(empId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    closeModal();
+    alert(res.message || "Employee record updated successfully.");
+
+    if (currentRoute === "employee-master") loadEmployeeMasterData();
+    else if (currentRoute === "stage1-employee-reg") loadStage1EmployeesList();
+    else if (currentRoute === "reconciliation-report") loadReconciliationReportData();
+    else if (currentRoute === "employee-tracking") executeTrackingSearch();
+    else if (currentRoute === "reports") loadReportPreview();
+    else if (currentRoute === "gp-master") loadGPMasterData();
+    else if (currentRoute === "availability") renderAvailabilityView();
+    else if (currentRoute === "dashboard") renderDashboardView();
+  } catch (err) {
+    alert("Failed to update employee: " + (err.detail || err.message));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save Changes`;
+      lucide.createIcons();
+    }
   }
 }
 
@@ -4043,9 +4483,12 @@ async function executeTrackingSearch() {
             <div class="text-base font-bold">${emp.name_ifmis}</div>
             <div class="font-mono text-xs text-slate-300">ID: ${emp.employee_id} | Mobile: <strong class="text-amber-300">${emp.mobile_number || 'N/A'}</strong> | Mandal: ${emp.salary_mandal_name}</div>
           </div>
-          <button onclick="viewEmployeeProfile('${emp.employee_id}')" class="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-xs shadow">
-            Full Dossier
-          </button>
+          <div class="flex items-center space-x-2">
+            ${emp.can_edit ? `<button onclick="openEditEmployeeModal('${escapeReportCell(emp.employee_id)}')" class="px-3 py-1 bg-white hover:bg-slate-100 text-govblue-900 font-bold rounded text-xs shadow">Edit</button>` : ""}
+            <button onclick="viewEmployeeProfile('${escapeReportCell(emp.employee_id)}')" class="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-xs shadow">
+              Full Dossier
+            </button>
+          </div>
         </div>
         <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs bg-slate-50 border-t">
           <div>

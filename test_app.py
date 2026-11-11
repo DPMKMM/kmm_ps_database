@@ -742,5 +742,103 @@ class TestKhammamPSApplication(unittest.TestCase):
 
         self.client.post("/api/auth/logout", headers=e_hdr)
 
+    def test_14_individual_employee_modification(self):
+        """
+        Verify PUT /api/employees/{employee_id} cleanly modifies individual sections
+        (basic details, salary GP, service status, deputation) while enforcing Mandal & Viewer permissions.
+        """
+        enkoor_user = self.db.query(User).filter(User.username == "enkoor").first()
+        kallur_user = self.db.query(User).filter(User.username == "kallur").first()
+        e_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == enkoor_user.mandal_id).all()
+        k_gps = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == kallur_user.mandal_id).all()
+
+        # Login Enkoor & register employee
+        e_login = self.client.post("/api/auth/login", json={
+            "username": "enkoor", "password": "Mandal@5065", "device_info": "Enkoor Edit Test"
+        })
+        e_hdr = {"Authorization": f"Bearer {e_login.json()['access_token']}"}
+
+        emp_id = f"TS-ED-{uuid.uuid4().hex[:4].upper()}"
+        self.assertEqual(self.client.post("/api/employees/stage1-register", headers=e_hdr, json={
+            "employee_id": emp_id,
+            "name_ifmis": "Initial Typo Name",
+            "mobile_number": "9000011111",
+            "designation": "Panchayat Secretary Grade-IV",
+            "dob": "1990-01-01"
+        }).status_code, 201)
+
+        # 1. Edit Stage 1 basic details only (Name, Mobile, Designation, DOB)
+        upd1 = self.client.put(f"/api/employees/{emp_id}", headers=e_hdr, json={
+            "name_ifmis": "Corrected Individual Name",
+            "mobile_number": "9888877777",
+            "designation": "Panchayat Secretary Grade-II",
+            "dob": "1991-06-15"
+        })
+        self.assertEqual(upd1.status_code, 200)
+        self.assertIn("BASIC_INFO", upd1.json()["updated_sections"])
+
+        prof1 = self.client.get(f"/api/employees/{emp_id}", headers=e_hdr).json()
+        self.assertTrue(prof1["can_edit"])
+        self.assertEqual(prof1["name_ifmis"], "Corrected Individual Name")
+        self.assertEqual(prof1["mobile_number"], "9888877777")
+        self.assertEqual(prof1["designation"], "Panchayat Secretary Grade-II")
+        self.assertEqual(prof1["dob_raw"], "1991-06-15")
+
+        # 2. Update Salary GP + OWN_GP + Working status
+        upd2 = self.client.put(f"/api/employees/{emp_id}", headers=e_hdr, json={
+            "salary_gp_lgd": e_gps[0].lgd_code,
+            "salary_claiming_status": "YES",
+            "service_status": "WORKING",
+            "is_working_in_salary_gp": True
+        })
+        self.assertEqual(upd2.status_code, 200)
+        self.assertIn("SALARY_MAPPING", upd2.json()["updated_sections"])
+
+        # 3. Change only Salary GP to another Enkoor GP -> OWN_GP working station must sync automatically
+        upd3 = self.client.put(f"/api/employees/{emp_id}", headers=e_hdr, json={
+            "name_ifmis": "Corrected Individual Name",
+            "mobile_number": "9888877777",
+            "salary_gp_lgd": e_gps[1].lgd_code,
+            "service_status": "WORKING",
+            "is_working_in_salary_gp": True
+        })
+        self.assertEqual(upd3.status_code, 200)
+        prof3 = self.client.get(f"/api/employees/{emp_id}", headers=e_hdr).json()
+        self.assertEqual(prof3["salary_gp_lgd"], e_gps[1].lgd_code)
+        self.assertEqual(prof3["current_posting"]["actual_working_gp_lgd"], e_gps[1].lgd_code)
+        self.assertEqual(len(prof3["status_history"]), 1, "Unchanged service status must not create duplicate rows")
+
+        # 4. Change to Deputed to Kallur + Suspended -> must appear cleanly and enforce permission
+        upd4 = self.client.put(f"/api/employees/{emp_id}", headers=e_hdr, json={
+            "is_working_in_salary_gp": False,
+            "posting_type": "ANOTHER_MANDAL",
+            "actual_working_gp_lgd": k_gps[0].lgd_code,
+            "deputation_order_no": "DEP-EDIT-99",
+            "service_status": "SUSPENDED",
+            "proceedings_order_no": "SUSP-EDIT-11",
+            "status_effective_from": "2026-10-20"
+        })
+        self.assertEqual(upd4.status_code, 200)
+        self.assertIn("SERVICE_STATUS", upd4.json()["updated_sections"])
+        self.assertIn("POSTING", upd4.json()["updated_sections"])
+
+        # Enkoor cannot move Salary GP into Kallur (403 Forbidden)
+        forbidden_sal = self.client.put(f"/api/employees/{emp_id}", headers=e_hdr, json={
+            "salary_gp_lgd": k_gps[0].lgd_code
+        })
+        self.assertEqual(forbidden_sal.status_code, 403)
+        self.client.post("/api/auth/logout", headers=e_hdr)
+
+        # 5. Receiving Mandal (Kallur) can view profile (incoming deputed PS) with can_edit=False, and cannot PUT (403)
+        k_login = self.client.post("/api/auth/login", json={
+            "username": "kallur", "password": "Mandal@5069", "device_info": "Kallur Edit Guard Test"
+        })
+        k_hdr = {"Authorization": f"Bearer {k_login.json()['access_token']}"}
+        k_prof = self.client.get(f"/api/employees/{emp_id}", headers=k_hdr)
+        self.assertEqual(k_prof.status_code, 200)
+        self.assertFalse(k_prof.json()["can_edit"])
+        self.assertEqual(self.client.put(f"/api/employees/{emp_id}", headers=k_hdr, json={"mobile_number": "9111111111"}).status_code, 403)
+        self.client.post("/api/auth/logout", headers=k_hdr)
+
 if __name__ == "__main__":
     unittest.main()

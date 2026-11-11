@@ -145,7 +145,11 @@ class EmployeeUpdateRequest(BaseModel):
     name_ifmis: Optional[str] = None
     dob: Optional[date] = None
     mobile_number: Optional[str] = None
+    designation: Optional[str] = None
+    registration_mandal_id: Optional[int] = None
     salary_gp_lgd: Optional[int] = None
+    salary_claiming_status: Optional[str] = None
+    salary_effective_from: Optional[date] = None
     is_working_in_salary_gp: Optional[bool] = None
     posting_type: Optional[str] = None
     actual_working_gp_lgd: Optional[int] = None
@@ -183,6 +187,25 @@ class EmployeeUpdateRequest(BaseModel):
     leave_approval_details: Optional[str] = None
     leave_proceedings_no: Optional[str] = None
     reason_remarks: Optional[str] = None
+
+    @field_validator(
+        'dob', 'salary_effective_from', 'deputation_order_date', 'deputation_effective_from',
+        'deputation_end_date', 'status_effective_from', 'status_end_date',
+        'expected_joining_date', 'actual_joining_date', 'proceedings_order_date',
+        'suspension_order_date', 'suspension_effective_date', 'revocation_effective_date',
+        'last_working_date', 'date_of_absence', 'leave_start_date', 'expected_return_date',
+        mode='before'
+    )
+    def parse_empty_update_dates(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
+
+    @field_validator('mobile_number', mode='before')
+    def parse_empty_update_mobile(cls, v):
+        if v == '' or v is None:
+            return None
+        return str(v).strip()
 
 class GlobalDuplicateCheckResult(BaseModel):
     is_duplicate: bool

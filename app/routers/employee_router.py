@@ -314,6 +314,21 @@ def create_employee(
         "employee_id": emp_id
     }
 
+def _can_edit_employee(
+    current_user: User,
+    emp: Employee,
+    salary_map: Optional[EmployeeSalaryMapping]
+) -> bool:
+    """Return True if current user may modify this employee's master, salary, status, or posting."""
+    if current_user.role == "SUPER_ADMIN":
+        return True
+    if current_user.role == "MANDAL_ADMIN":
+        if salary_map:
+            return salary_map.salary_mandal_id == current_user.mandal_id
+        return emp.registration_mandal_id == current_user.mandal_id
+    return False
+
+
 @router.get("")
 def list_employees(
     search: Optional[str] = None,
@@ -421,6 +436,7 @@ def list_employees(
             "name_ifmis": emp.name_ifmis,
             "mobile_number": emp.mobile_number or "N/A",
             "dob": emp.dob.strftime("%Y-%m-%d") if can_view_dob and emp.dob else "Restricted",
+            "designation": emp.designation or "Panchayat Secretary",
             "salary_gp_lgd": sm.salary_gp_lgd,
             "salary_gp_name": gp.gp_name,
             "salary_mandal_id": sm.salary_mandal_id,
@@ -435,6 +451,7 @@ def list_employees(
             "verification_status": post.verification_status if post else "PENDING",
             "deputation_order_no": post.deputation_order_no if post else None,
             "expected_joining_date": st.expected_joining_date.strftime("%Y-%m-%d") if st and st.expected_joining_date else None,
+            "can_edit": _can_edit_employee(current_user, emp, sm),
             "created_at": emp.created_at.strftime("%Y-%m-%d %H:%M") if emp.created_at else ""
         })
         
@@ -501,7 +518,8 @@ def list_stage1_employees(
             "salary_mapped": sm is not None,
             "salary_gp_name": sm.panchayat.gp_name if sm and sm.panchayat else None,
             "working_mapped": p is not None,
-            "working_gp_name": p.working_panchayat.gp_name if p and p.working_panchayat else (p.external_gp_or_office_name if p else None)
+            "working_gp_name": p.working_panchayat.gp_name if p and p.working_panchayat else (p.external_gp_or_office_name if p else None),
+            "can_edit": _can_edit_employee(current_user, e, sm)
         })
     return results
 
@@ -563,7 +581,14 @@ def get_employee_profile(
     current_posting = next((p for p in postings if p.is_current), None)
     current_status = next((s for s in statuses if s.is_current), None)
     
-    can_view_dob = (current_user.role == "SUPER_ADMIN" or (salary_map and current_user.mandal_id == salary_map.salary_mandal_id))
+    can_view_dob = (
+        current_user.role == "SUPER_ADMIN"
+        or (current_user.role == "MANDAL_ADMIN" and (
+            emp.registration_mandal_id == current_user.mandal_id
+            or (salary_map and current_user.mandal_id == salary_map.salary_mandal_id)
+        ))
+    )
+    can_edit = _can_edit_employee(current_user, emp, salary_map)
     
     posting_history_list = []
     for p in postings:
@@ -620,27 +645,42 @@ def get_employee_profile(
         "name_ifmis": emp.name_ifmis,
         "mobile_number": emp.mobile_number or "N/A",
         "dob": emp.dob.strftime("%Y-%m-%d") if can_view_dob and emp.dob else "Restricted",
+        "dob_raw": emp.dob.strftime("%Y-%m-%d") if can_view_dob and emp.dob else "",
+        "designation": emp.designation or "Panchayat Secretary Grade-IV",
+        "registration_mandal_id": emp.registration_mandal_id,
+        "registration_mandal_name": emp.registration_mandal.mandal_name if emp.registration_mandal else "N/A",
+        "can_edit": can_edit,
         "salary_gp_lgd": salary_map.salary_gp_lgd if salary_map else None,
         "salary_gp_name": salary_map.panchayat.gp_name if salary_map and salary_map.panchayat else "N/A",
+        "salary_mandal_id": salary_map.salary_mandal_id if salary_map else None,
         "salary_mandal_name": salary_map.panchayat.mandal_name if salary_map and salary_map.panchayat else "N/A",
+        "salary_claiming_status": salary_map.salary_claiming_status if salary_map else "YES",
+        "salary_effective_from": salary_map.effective_from.strftime("%Y-%m-%d") if salary_map and salary_map.effective_from else "",
         "current_posting": {
             "posting_type": current_posting.posting_type if current_posting else "OWN_GP",
             "is_working_in_salary_gp": current_posting.is_working_in_salary_gp if current_posting else True,
             "actual_working_gp_lgd": current_posting.actual_working_gp_lgd if current_posting else None,
+            "actual_working_mandal_id": current_posting.actual_working_mandal_id if current_posting else None,
             "actual_working_gp_name": current_posting.working_panchayat.gp_name if current_posting and current_posting.working_panchayat else (current_posting.external_gp_or_office_name if current_posting else "N/A"),
             "actual_working_mandal_name": current_posting.working_panchayat.mandal_name if current_posting and current_posting.working_panchayat else (current_posting.external_mandal_name if current_posting else "N/A"),
             "external_district_name": current_posting.external_district_name if current_posting else None,
+            "external_mandal_name": current_posting.external_mandal_name if current_posting else None,
+            "external_gp_or_office_name": current_posting.external_gp_or_office_name if current_posting else None,
+            "external_department_name": current_posting.external_department_name if current_posting else None,
             "verification_status": current_posting.verification_status if current_posting else "PENDING",
             "deputation_order_no": current_posting.deputation_order_no if current_posting else None,
             "deputation_order_date": current_posting.deputation_order_date.strftime("%Y-%m-%d") if current_posting and current_posting.deputation_order_date else None,
+            "deputation_effective_from": current_posting.deputation_effective_from.strftime("%Y-%m-%d") if current_posting and current_posting.deputation_effective_from else None,
+            "deputation_end_date": current_posting.deputation_end_date.strftime("%Y-%m-%d") if current_posting and current_posting.deputation_end_date else None,
             "remarks": current_posting.remarks if current_posting else None
         },
         "current_service_status": {
             "service_status": current_status.service_status if current_status else "WORKING",
             "effective_from": current_status.status_effective_from.strftime("%Y-%m-%d") if current_status and current_status.status_effective_from else None,
             "expected_joining_date": current_status.expected_joining_date.strftime("%Y-%m-%d") if current_status and current_status.expected_joining_date else None,
-            "proceedings_order_no": current_status.proceedings_order_no if current_status else None,
+            "proceedings_order_no": (current_status.suspension_order_no or current_status.leave_proceedings_no or current_status.proceedings_order_no) if current_status else None,
             "suspension_order_no": current_status.suspension_order_no if current_status else None,
+            "revocation_order_no": current_status.revocation_order_no if current_status else None,
             "reason_remarks": current_status.reason_remarks if current_status else None
         },
         "posting_history": posting_history_list,
@@ -658,7 +698,7 @@ def update_employee(
     emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-        
+
     salary_map = (
         db.query(EmployeeSalaryMapping)
         .filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True)
@@ -666,119 +706,290 @@ def update_employee(
     )
 
     enforce_employee_mandal_scope(db, current_user, emp.employee_id, allow_viewer=False)
-        
-    now = datetime.utcnow()
-    
-    # Update employee info
-    if payload.name_ifmis:
-        emp.name_ifmis = payload.name_ifmis.strip()
-    if payload.mobile_number is not None:
-        emp.mobile_number = payload.mobile_number.strip()
-    if payload.dob and current_user.role == "SUPER_ADMIN":
-        emp.dob = payload.dob
-        
-    # If service status is updating, preserve history (Section 16)
-    if payload.service_status:
-        # Mark previous status as not current
-        db.query(EmployeeStatusHistory).filter(
-            EmployeeStatusHistory.employee_id == emp.employee_id,
-            EmployeeStatusHistory.is_current == True
-        ).update({"is_current": False})
-        
-        new_status = EmployeeStatusHistory(
-            employee_id=emp.employee_id,
-            service_status=payload.service_status,
-            status_effective_from=payload.status_effective_from,
-            status_end_date=payload.status_end_date,
-            expected_joining_date=payload.expected_joining_date,
-            actual_joining_date=payload.actual_joining_date,
-            proceedings_order_no=payload.proceedings_order_no,
-            proceedings_order_date=payload.proceedings_order_date,
-            suspension_order_no=payload.suspension_order_no,
-            suspension_order_date=payload.suspension_order_date,
-            suspension_effective_date=payload.suspension_effective_date,
-            revocation_order_no=payload.revocation_order_no,
-            revocation_effective_date=payload.revocation_effective_date,
-            last_working_date=payload.last_working_date,
-            date_of_absence=payload.date_of_absence,
-            disciplinary_initiated=payload.disciplinary_initiated or False,
-            leave_start_date=payload.leave_start_date,
-            expected_return_date=payload.expected_return_date,
-            leave_approval_details=payload.leave_approval_details,
-            leave_proceedings_no=payload.leave_proceedings_no,
-            reason_remarks=payload.reason_remarks,
-            is_current=True,
-            updated_by=current_user.username,
-            updated_at=now
+    if not _can_edit_employee(current_user, emp, salary_map):
+        raise HTTPException(
+            status_code=403,
+            detail="Only District Super Admin or the employee's salary-claiming Mandal can modify this record."
         )
-        db.add(new_status)
-        
-    # If posting/deputation is changing, preserve history (Section 16)
-    if payload.is_working_in_salary_gp is not None:
-        db.query(EmployeePosting).filter(
-            EmployeePosting.employee_id == emp.employee_id,
-            EmployeePosting.is_current == True
-        ).update({"is_current": False})
-        
-        if payload.is_working_in_salary_gp:
+
+    now = datetime.utcnow()
+    updated_sections = []
+
+    # 1. Master / Basic Details
+    basic_changed = False
+    if payload.name_ifmis and payload.name_ifmis.strip() != emp.name_ifmis:
+        emp.name_ifmis = payload.name_ifmis.strip()
+        basic_changed = True
+    if "mobile_number" in payload.model_fields_set and payload.mobile_number != emp.mobile_number:
+        emp.mobile_number = payload.mobile_number
+        basic_changed = True
+    if payload.designation and payload.designation.strip() != (emp.designation or ""):
+        emp.designation = payload.designation.strip()
+        basic_changed = True
+    if "dob" in payload.model_fields_set and payload.dob != emp.dob:
+        emp.dob = payload.dob
+        basic_changed = True
+    if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN" and payload.registration_mandal_id != emp.registration_mandal_id:
+        reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
+        if not reg_m:
+            raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
+        emp.registration_mandal_id = reg_m.id
+        basic_changed = True
+    if basic_changed:
+        updated_sections.append("BASIC_INFO")
+
+    # 2. Salary Mapping Update
+    salary_gp_changed = False
+    target_sal_lgd = payload.salary_gp_lgd if payload.salary_gp_lgd is not None else (salary_map.salary_gp_lgd if salary_map else None)
+    if target_sal_lgd and (
+        "salary_gp_lgd" in payload.model_fields_set
+        or "salary_claiming_status" in payload.model_fields_set
+        or "salary_effective_from" in payload.model_fields_set
+    ):
+        sal_gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == target_sal_lgd).first()
+        if not sal_gp:
+            raise HTTPException(status_code=400, detail="Invalid Salary-Claiming Gram Panchayat LGD Code.")
+        enforce_mandal_isolation(current_user, sal_gp.mandal_id)
+
+        new_claim_status = (payload.salary_claiming_status or (salary_map.salary_claiming_status if salary_map else "YES")).upper()
+        new_eff_from = (
+            payload.salary_effective_from
+            if "salary_effective_from" in payload.model_fields_set
+            else (salary_map.effective_from if salary_map else date.today())
+        )
+        if (
+            salary_map is None
+            or salary_map.salary_gp_lgd != sal_gp.lgd_code
+            or (salary_map.salary_claiming_status or "YES") != new_claim_status
+            or salary_map.effective_from != new_eff_from
+        ):
+            salary_gp_changed = (salary_map is None or salary_map.salary_gp_lgd != sal_gp.lgd_code)
+            db.query(EmployeeSalaryMapping).filter(
+                EmployeeSalaryMapping.employee_id == emp.employee_id,
+                EmployeeSalaryMapping.is_active == True
+            ).update({"is_active": False})
+            salary_map = EmployeeSalaryMapping(
+                employee_id=emp.employee_id,
+                salary_gp_lgd=sal_gp.lgd_code,
+                salary_mandal_id=sal_gp.mandal_id,
+                salary_claiming_status=new_claim_status,
+                effective_from=new_eff_from,
+                is_active=True,
+                created_by=current_user.username,
+                created_at=now
+            )
+            db.add(salary_map)
+            db.flush()
+            updated_sections.append("SALARY_MAPPING")
+
+    # 3. Service Status Update (preserve history only when changed)
+    current_status = (
+        db.query(EmployeeStatusHistory)
+        .filter(EmployeeStatusHistory.employee_id == emp.employee_id, EmployeeStatusHistory.is_current == True)
+        .first()
+    )
+    if payload.service_status:
+        new_order_no = (
+            payload.proceedings_order_no
+            or payload.suspension_order_no
+            or payload.leave_proceedings_no
+        )
+        new_eff_date = (
+            payload.status_effective_from
+            or payload.suspension_effective_date
+            or payload.leave_start_date
+        )
+        new_exp_join = payload.expected_joining_date or payload.expected_return_date
+        cur_order_no = (
+            (current_status.suspension_order_no or current_status.leave_proceedings_no or current_status.proceedings_order_no)
+            if current_status else None
+        )
+        cur_eff_date = (
+            (current_status.status_effective_from or current_status.suspension_effective_date or current_status.leave_start_date)
+            if current_status else None
+        )
+        cur_exp_join = (
+            (current_status.expected_joining_date or current_status.expected_return_date)
+            if current_status else None
+        )
+
+        status_changed = (
+            current_status is None
+            or current_status.service_status != payload.service_status
+            or (cur_order_no or "") != (new_order_no or "")
+            or cur_eff_date != new_eff_date
+            or cur_exp_join != new_exp_join
+            or (current_status.reason_remarks or "") != (payload.reason_remarks or "")
+            or ("revocation_order_no" in payload.model_fields_set and (current_status.revocation_order_no or "") != (payload.revocation_order_no or ""))
+        )
+        if status_changed:
+            db.query(EmployeeStatusHistory).filter(
+                EmployeeStatusHistory.employee_id == emp.employee_id,
+                EmployeeStatusHistory.is_current == True
+            ).update({"is_current": False})
+
+            is_susp = payload.service_status == "SUSPENDED"
+            is_abs = payload.service_status == "ABSCONDING"
+            is_leave = payload.service_status not in ("WORKING", "SUSPENDED", "ABSCONDING")
+
+            new_status = EmployeeStatusHistory(
+                employee_id=emp.employee_id,
+                service_status=payload.service_status,
+                status_effective_from=new_eff_date,
+                status_end_date=payload.status_end_date,
+                expected_joining_date=new_exp_join,
+                actual_joining_date=payload.actual_joining_date,
+                proceedings_order_no=new_order_no,
+                proceedings_order_date=payload.proceedings_order_date,
+                suspension_order_no=(payload.suspension_order_no or new_order_no) if is_susp else payload.suspension_order_no,
+                suspension_order_date=payload.suspension_order_date,
+                suspension_effective_date=(payload.suspension_effective_date or new_eff_date) if is_susp else payload.suspension_effective_date,
+                revocation_order_no=payload.revocation_order_no,
+                revocation_effective_date=payload.revocation_effective_date,
+                last_working_date=(payload.last_working_date or new_eff_date) if is_abs else payload.last_working_date,
+                date_of_absence=payload.date_of_absence,
+                disciplinary_initiated=payload.disciplinary_initiated or False,
+                leave_start_date=(payload.leave_start_date or new_eff_date) if is_leave else payload.leave_start_date,
+                expected_return_date=(payload.expected_return_date or new_exp_join) if is_leave else payload.expected_return_date,
+                leave_approval_details=payload.leave_approval_details,
+                leave_proceedings_no=(payload.leave_proceedings_no or new_order_no) if is_leave else payload.leave_proceedings_no,
+                reason_remarks=payload.reason_remarks,
+                is_current=True,
+                updated_by=current_user.username,
+                updated_at=now
+            )
+            db.add(new_status)
+            updated_sections.append("SERVICE_STATUS")
+
+    # 4. Working Station / Deputation Mapping Update (preserve history when changed or OWN_GP salary changed)
+    current_posting = (
+        db.query(EmployeePosting)
+        .filter(EmployeePosting.employee_id == emp.employee_id, EmployeePosting.is_current == True)
+        .first()
+    )
+    should_evaluate_posting = (
+        payload.is_working_in_salary_gp is not None
+        or (salary_gp_changed and current_posting and current_posting.is_working_in_salary_gp)
+    )
+    if should_evaluate_posting:
+        target_own_gp = (
+            payload.is_working_in_salary_gp
+            if payload.is_working_in_salary_gp is not None
+            else current_posting.is_working_in_salary_gp
+        )
+        if target_own_gp:
+            if salary_map is None:
+                raise HTTPException(status_code=400, detail="Please map Salary-Claiming GP before setting Working Station.")
             p_type = "OWN_GP"
-            act_gp = salary_map.salary_gp_lgd if salary_map else None
-            act_mandal = salary_map.salary_mandal_id if salary_map else None
+            act_gp = salary_map.salary_gp_lgd
+            act_mandal = salary_map.salary_mandal_id
+            off_dep_gp = None
+            off_dep_mandal = None
             ext_d = None
             ext_m = None
             ext_o = None
+            ext_dept = None
             v_status = "VERIFIED_BOTH"
         else:
             p_type = payload.posting_type or "WITHIN_MANDAL"
             if p_type == "OTHER_DISTRICT":
+                if not payload.external_district_name:
+                    raise HTTPException(status_code=400, detail="External district name is required for Other District deputation.")
                 act_gp = None
                 act_mandal = None
-                ext_d = payload.external_district_name
-                ext_m = payload.external_mandal_name
-                ext_o = payload.external_gp_or_office_name
+                off_dep_gp = None
+                off_dep_mandal = None
+                ext_d = payload.external_district_name.strip()
+                ext_m = payload.external_mandal_name.strip() if payload.external_mandal_name else None
+                ext_o = payload.external_gp_or_office_name.strip() if payload.external_gp_or_office_name else None
+                ext_dept = None
+                v_status = "VERIFIED_SALARY_GP"
+            elif p_type == "OTHER_DEPARTMENT":
+                if not payload.external_department_name:
+                    raise HTTPException(status_code=400, detail="External department name is required for Other Department deputation.")
+                act_gp = None
+                act_mandal = None
+                off_dep_gp = None
+                off_dep_mandal = None
+                ext_d = payload.external_district_name.strip() if payload.external_district_name else "Telangana State"
+                ext_m = payload.external_mandal_name.strip() if payload.external_mandal_name else None
+                ext_o = payload.external_gp_or_office_name.strip() if payload.external_gp_or_office_name else None
+                ext_dept = payload.external_department_name.strip()
                 v_status = "VERIFIED_SALARY_GP"
             else:
                 act_gp = payload.actual_working_gp_lgd
                 w_gp = db.query(GramPanchayat).filter(GramPanchayat.lgd_code == act_gp).first() if act_gp else None
-                act_mandal = w_gp.mandal_id if w_gp else None
+                if not w_gp:
+                    raise HTTPException(status_code=400, detail="Valid Actual Working Gram Panchayat is required for Intra-District deputation.")
+                act_mandal = w_gp.mandal_id
+                off_dep_gp = w_gp.lgd_code
+                off_dep_mandal = w_gp.mandal_id
                 ext_d = None
                 ext_m = None
                 ext_o = None
-                v_status = "PENDING"
-                
-        new_posting = EmployeePosting(
-            employee_id=emp.employee_id,
-            is_working_in_salary_gp=payload.is_working_in_salary_gp,
-            posting_type=p_type,
-            actual_working_gp_lgd=act_gp,
-            actual_working_mandal_id=act_mandal,
-            external_district_name=ext_d,
-            external_mandal_name=ext_m,
-            external_gp_or_office_name=ext_o,
-            external_lgd_code=payload.external_lgd_code,
-            external_address=payload.external_address,
-            deputation_order_no=payload.deputation_order_no,
-            deputation_order_date=payload.deputation_order_date,
-            deputation_effective_from=payload.deputation_effective_from,
-            deputation_end_date=payload.deputation_end_date,
-            remarks=payload.deputation_remarks,
-            verification_status=v_status,
-            is_current=True,
-            updated_by=current_user.username,
-            created_at=now,
-            updated_at=now
+                ext_dept = None
+                v_status = "VERIFIED_BOTH" if (salary_map and act_mandal == salary_map.salary_mandal_id) else "PENDING"
+
+        posting_changed = (
+            current_posting is None
+            or current_posting.is_working_in_salary_gp != target_own_gp
+            or (current_posting.posting_type or "OWN_GP") != p_type
+            or current_posting.actual_working_gp_lgd != act_gp
+            or (current_posting.external_district_name or "") != (ext_d or "")
+            or (current_posting.external_mandal_name or "") != (ext_m or "")
+            or (current_posting.external_gp_or_office_name or "") != (ext_o or "")
+            or (current_posting.external_department_name or "") != (ext_dept or "")
+            or (current_posting.deputation_order_no or "") != (payload.deputation_order_no or "")
+            or current_posting.deputation_order_date != payload.deputation_order_date
+            or current_posting.deputation_effective_from != payload.deputation_effective_from
+            or current_posting.deputation_end_date != payload.deputation_end_date
+            or (current_posting.remarks or "") != (payload.deputation_remarks or "")
         )
-        db.add(new_posting)
-        db.flush()
-        
-        if not payload.is_working_in_salary_gp and p_type != "OTHER_DISTRICT":
-            db.add(GPVerification(
-                posting_id=new_posting.id,
+        if posting_changed:
+            db.query(EmployeePosting).filter(
+                EmployeePosting.employee_id == emp.employee_id,
+                EmployeePosting.is_current == True
+            ).update({"is_current": False})
+
+            new_posting = EmployeePosting(
                 employee_id=emp.employee_id,
-                salary_mandal_id=salary_map.salary_mandal_id if salary_map else 0,
-                receiving_mandal_id=act_mandal,
-                status="PENDING"
-            ))
+                is_working_in_salary_gp=target_own_gp,
+                posting_type=p_type,
+                actual_working_gp_lgd=act_gp,
+                actual_working_mandal_id=act_mandal,
+                official_deputation_gp_lgd=off_dep_gp,
+                official_deputation_mandal_id=off_dep_mandal,
+                external_district_name=ext_d,
+                external_mandal_name=ext_m,
+                external_gp_or_office_name=ext_o,
+                external_department_name=ext_dept,
+                external_lgd_code=payload.external_lgd_code,
+                external_address=payload.external_address,
+                deputation_order_no=payload.deputation_order_no,
+                deputation_order_date=payload.deputation_order_date,
+                deputation_effective_from=payload.deputation_effective_from,
+                deputation_end_date=payload.deputation_end_date,
+                remarks=payload.deputation_remarks,
+                verification_status=v_status,
+                is_current=True,
+                updated_by=current_user.username,
+                created_at=now,
+                updated_at=now
+            )
+            db.add(new_posting)
+            db.flush()
+
+            if not target_own_gp and p_type not in ("OTHER_DISTRICT", "OTHER_DEPARTMENT"):
+                db.add(GPVerification(
+                    posting_id=new_posting.id,
+                    employee_id=emp.employee_id,
+                    salary_mandal_id=salary_map.salary_mandal_id if salary_map else 0,
+                    receiving_mandal_id=act_mandal,
+                    status="CONFIRMED" if v_status == "VERIFIED_BOTH" else "PENDING",
+                    verified_by_user=current_user.username if v_status == "VERIFIED_BOTH" else None,
+                    verified_at=now if v_status == "VERIFIED_BOTH" else None
+                ))
+            updated_sections.append("POSTING")
 
     audit = AuditLog(
         user_id=current_user.id,
@@ -787,14 +998,17 @@ def update_employee(
         action="UPDATE_EMPLOYEE",
         entity_type="EMPLOYEE",
         entity_id=emp.employee_id,
-        details=f"Updated profile for employee {emp.name_ifmis} ({emp.employee_id})",
+        details=f"Updated profile for employee {emp.name_ifmis} ({emp.employee_id}). Sections: {', '.join(updated_sections) or 'NO_CHANGE'}",
         ip_address=request.client.host if request.client else "127.0.0.1",
         timestamp=now
     )
     db.add(audit)
     db.commit()
-    
-    return {"message": "Employee record updated successfully"}
+
+    return {
+        "message": f"Employee {emp.name_ifmis} ({emp.employee_id}) updated successfully",
+        "updated_sections": updated_sections
+    }
 
 # ==========================================
 # STAGE 1: EMPLOYEE MASTER REGISTRATION
