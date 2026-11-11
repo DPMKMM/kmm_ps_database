@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
@@ -21,10 +21,15 @@ def get_deputation_chains(
 ):
     """
     SECTION 8: AUTOMATIC DEPUTATION CHAIN TRACKING ENGINE
-    Discovers multi-hop deputation chains.
-    Strictly scoped to logged-in Mandal when user is MANDAL_ADMIN.
+    Discovers multi-hop deputation chains for District Admin / Viewer roles.
+    Disabled for Mandal Admin login.
     """
-    target_mandal_id = current_user.mandal_id if current_user.role == "MANDAL_ADMIN" else mandal_id
+    if current_user.role == "MANDAL_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Deputation Chains Graph is only available at District level login."
+        )
+    target_mandal_id = mandal_id
 
     # 1. Fetch active postings where employee is deputed (not working in own salary GP)
     q = (

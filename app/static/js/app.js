@@ -52,6 +52,11 @@ function navigate(route) {
     route = "stage2-salary-mapping";
   }
 
+  // Deputation Chains Graph is disabled for Mandal Admin login
+  if (currentUser && currentUser.role === "MANDAL_ADMIN" && route === "deputation-chains") {
+    route = "dashboard";
+  }
+
   currentRoute = route;
   window.location.hash = route;
   
@@ -278,6 +283,7 @@ function updateHeaderAndNavScope(summary = null) {
   const badge2Val = document.getElementById("header-badge-2-val");
   const navDistrictReports = document.getElementById("nav-district-reports");
   const navDistrictReportsLabel = document.getElementById("nav-district-reports-label");
+  const navDeputationChains = document.getElementById("nav-deputation-chains");
   const navMandalReportsLabel = document.getElementById("nav-mandal-reports-label");
   const navGPMasterLabel = document.getElementById("nav-gp-master-label");
 
@@ -304,7 +310,8 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Label) badge2Label.textContent = "Mandal LGD";
     if (badge2Val) badge2Val.textContent = currentUser.mandal_lgd || "-";
 
-    // Nav adjustments: Scope reports label strictly to user's Mandal
+    // Nav adjustments: Remove Deputation Chains Graph in Mandal login & scope Reports label
+    if (navDeputationChains) navDeputationChains.classList.add("hidden");
     if (navDistrictReports) navDistrictReports.classList.remove("hidden");
     if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = `${currentUser.mandal_name} Reports (All)`;
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = `${currentUser.mandal_name} Mandal Position`;
@@ -320,6 +327,7 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Label) badge2Label.textContent = "Mandals";
     if (badge2Val) badge2Val.textContent = "20";
 
+    if (navDeputationChains) navDeputationChains.classList.remove("hidden");
     if (navDistrictReports) navDistrictReports.classList.remove("hidden");
     if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = "District Reports (All A-Z)";
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = "Mandal-wise Position";
@@ -4075,6 +4083,10 @@ let lastDrawnGraph = null;
 let lastNodePositions = {};
 
 async function renderDeputationChainsView() {
+  if (currentUser && currentUser.role === "MANDAL_ADMIN") {
+    navigate("dashboard");
+    return;
+  }
   const container = document.getElementById("view-deputation-chains");
   const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
   if (isMandal) {

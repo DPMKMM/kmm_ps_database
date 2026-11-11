@@ -708,19 +708,15 @@ class TestKhammamPSApplication(unittest.TestCase):
         self.assertNotIn(emp_e, s_edge_ids)
         self.client.post("/api/auth/logout", headers=a_hdr)
 
-        # Enkoor Mandal Admin login: STRICTLY concerned Mandal only
+        # Enkoor Mandal Admin login: Deputation Chains Graph blocked (403) and all other views strictly Enkoor-only
         enkoor_login = self.client.post("/api/auth/login", json={
             "username": "enkoor", "password": "Mandal@5065", "device_info": "Enkoor Chain Isolation"
         })
         e_hdr = {"Authorization": f"Bearer {enkoor_login.json()['access_token']}"}
 
-        # Spoofing another mandal_id in /deputations/chains must still return only Enkoor data
+        # Deputation Chains Graph endpoint must reject Mandal Admin login with 403
         e_chains = self.client.get(f"/api/deputations/chains?mandal_id={sathupally_user.mandal_id}", headers=e_hdr)
-        self.assertEqual(e_chains.status_code, 200)
-        e_edge_ids = {e["employee_id"] for e in e_chains.json()["graph"]["edges"]}
-        self.assertIn(emp_e, e_edge_ids)
-        self.assertIn(emp_k_to_e, e_edge_ids)
-        self.assertNotIn(emp_s_only, e_edge_ids)
+        self.assertEqual(e_chains.status_code, 403)
 
         # Report Q (Chain Report) excludes unrelated Sathupally employee
         e_rep_q = self.client.get("/api/reports/data/Q", headers=e_hdr)
