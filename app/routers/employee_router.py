@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 
 from app.database import get_db
 from app.models import (
@@ -328,6 +328,20 @@ def _can_edit_employee(
         return emp.registration_mandal_id == current_user.mandal_id
     return False
 
+def _can_delete_employee(
+    current_user: User,
+    emp: Employee,
+    salary_map: Optional[EmployeeSalaryMapping]
+) -> bool:
+    """Return True if current user may delete this employee record."""
+    if current_user.role == "SUPER_ADMIN":
+        return True
+    if current_user.role == "MANDAL_ADMIN":
+        if salary_map:
+            return salary_map.salary_mandal_id == current_user.mandal_id
+        return emp.registration_mandal_id == current_user.mandal_id
+    return False
+
 
 @router.get("")
 def list_employees(
@@ -452,6 +466,7 @@ def list_employees(
             "deputation_order_no": post.deputation_order_no if post else None,
             "expected_joining_date": st.expected_joining_date.strftime("%Y-%m-%d") if st and st.expected_joining_date else None,
             "can_edit": _can_edit_employee(current_user, emp, sm),
+            "can_delete": _can_delete_employee(current_user, emp, sm),
             "created_at": emp.created_at.strftime("%Y-%m-%d %H:%M") if emp.created_at else ""
         })
         
@@ -519,7 +534,8 @@ def list_stage1_employees(
             "salary_gp_name": sm.panchayat.gp_name if sm and sm.panchayat else None,
             "working_mapped": p is not None,
             "working_gp_name": p.working_panchayat.gp_name if p and p.working_panchayat else (p.external_gp_or_office_name if p else None),
-            "can_edit": _can_edit_employee(current_user, e, sm)
+            "can_edit": _can_edit_employee(current_user, e, sm),
+            "can_delete": _can_delete_employee(current_user, e, sm)
         })
     return results
 
@@ -650,6 +666,7 @@ def get_employee_profile(
         "registration_mandal_id": emp.registration_mandal_id,
         "registration_mandal_name": emp.registration_mandal.mandal_name if emp.registration_mandal else "N/A",
         "can_edit": can_edit,
+        "can_delete": _can_delete_employee(current_user, emp, salary_map),
         "salary_gp_lgd": salary_map.salary_gp_lgd if salary_map else None,
         "salary_gp_name": salary_map.panchayat.gp_name if salary_map and salary_map.panchayat else "N/A",
         "salary_mandal_id": salary_map.salary_mandal_id if salary_map else None,
@@ -715,28 +732,99 @@ def update_employee(
     now = datetime.utcnow()
     updated_sections = []
 
-    # 1. Master / Basic Details
-    basic_changed = False
-    if payload.name_ifmis and payload.name_ifmis.strip() != emp.name_ifmis:
-        emp.name_ifmis = payload.name_ifmis.strip()
-        basic_changed = True
-    if "mobile_number" in payload.model_fields_set and payload.mobile_number != emp.mobile_number:
-        emp.mobile_number = payload.mobile_number
-        basic_changed = True
-    if payload.designation and payload.designation.strip() != (emp.designation or ""):
-        emp.designation = payload.designation.strip()
-        basic_changed = True
-    if "dob" in payload.model_fields_set and payload.dob != emp.dob:
-        emp.dob = payload.dob
-        basic_changed = True
-    if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN" and payload.registration_mandal_id != emp.registration_mandal_id:
-        reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
-        if not reg_m:
-            raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
-        emp.registration_mandal_id = reg_m.id
-        basic_changed = True
-    if basic_changed:
-        updated_sections.append("BASIC_INFO")
+    # 0. Employee Code / ID Update
+    target_new_id = (payload.new_employee_id or payload.employee_id)
+    if target_new_id:
+        target_new_id = target_new_id.strip()
+    old_emp_id = emp.employee_id
+
+    if target_new_id and target_new_id != old_emp_id:
+        dup = db.query(Employee).filter(Employee.employee_id == target_new_id).first()
+        if dup:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Employee Code '{target_new_id}' is already registered to another employee ({dup.name_ifmis})."
+            )
+
+        reg_m_id = emp.registration_mandal_id
+        if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN":
+            reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
+            if not reg_m:
+                raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
+            reg_m_id = reg_m.id
+
+        new_name = payload.name_ifmis.strip() if payload.name_ifmis else emp.name_ifmis
+        new_dob = payload.dob if "dob" in payload.model_fields_set else emp.dob
+        new_mobile = payload.mobile_number if "mobile_number" in payload.model_fields_set else emp.mobile_number
+        new_desig = payload.designation.strip() if payload.designation else emp.designation
+
+        new_emp = Employee(
+            employee_id=target_new_id,
+            name_ifmis=new_name,
+            dob=new_dob,
+            mobile_number=new_mobile,
+            designation=new_desig,
+            registration_mandal_id=reg_m_id,
+            is_active=emp.is_active,
+            created_by=emp.created_by,
+            created_at=emp.created_at
+        )
+        db.add(new_emp)
+        db.flush()
+
+        db.execute(text("UPDATE employee_salary_mapping SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE employee_postings SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE employee_status_history SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE internal_reassignments SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE gp_verifications SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE discrepancy_records SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE employee_documents SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE status_notifications SET employee_id = :new_id WHERE employee_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+        db.execute(text("UPDATE audit_logs SET entity_id = :new_id WHERE entity_type = 'EMPLOYEE' AND entity_id = :old_id"), {"new_id": target_new_id, "old_id": old_emp_id})
+
+        db.execute(text("DELETE FROM employees WHERE employee_id = :old_id"), {"old_id": old_emp_id})
+        db.flush()
+
+        db.expire_all()
+        emp = db.query(Employee).filter(Employee.employee_id == target_new_id).first()
+        salary_map = (
+            db.query(EmployeeSalaryMapping)
+            .filter(EmployeeSalaryMapping.employee_id == target_new_id, EmployeeSalaryMapping.is_active == True)
+            .first()
+        )
+        updated_sections.append("EMPLOYEE_CODE")
+        if (
+            new_name != old_emp_id or
+            payload.name_ifmis or
+            "mobile_number" in payload.model_fields_set or
+            payload.designation or
+            "dob" in payload.model_fields_set or
+            payload.registration_mandal_id
+        ):
+            updated_sections.append("BASIC_INFO")
+    else:
+        # 1. Master / Basic Details
+        basic_changed = False
+        if payload.name_ifmis and payload.name_ifmis.strip() != emp.name_ifmis:
+            emp.name_ifmis = payload.name_ifmis.strip()
+            basic_changed = True
+        if "mobile_number" in payload.model_fields_set and payload.mobile_number != emp.mobile_number:
+            emp.mobile_number = payload.mobile_number
+            basic_changed = True
+        if payload.designation and payload.designation.strip() != (emp.designation or ""):
+            emp.designation = payload.designation.strip()
+            basic_changed = True
+        if "dob" in payload.model_fields_set and payload.dob != emp.dob:
+            emp.dob = payload.dob
+            basic_changed = True
+        if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN" and payload.registration_mandal_id != emp.registration_mandal_id:
+            reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
+            if not reg_m:
+                raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
+            emp.registration_mandal_id = reg_m.id
+            basic_changed = True
+        if basic_changed:
+            updated_sections.append("BASIC_INFO")
 
     # 2. Salary Mapping Update
     salary_gp_changed = False
@@ -1007,7 +1095,66 @@ def update_employee(
 
     return {
         "message": f"Employee {emp.name_ifmis} ({emp.employee_id}) updated successfully",
-        "updated_sections": updated_sections
+        "updated_sections": updated_sections,
+        "employee_id": emp.employee_id
+    }
+
+@router.delete("/{employee_id}")
+def delete_employee(
+    employee_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    emp = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    salary_map = (
+        db.query(EmployeeSalaryMapping)
+        .filter(EmployeeSalaryMapping.employee_id == emp.employee_id, EmployeeSalaryMapping.is_active == True)
+        .first()
+    )
+
+    if not _can_delete_employee(current_user, emp, salary_map):
+        raise HTTPException(
+            status_code=403,
+            detail="Only District Super Admin or the employee's salary-claiming Mandal can delete this record."
+        )
+
+    now = datetime.utcnow()
+    del_id = emp.employee_id
+    del_name = emp.name_ifmis
+
+    # Clean up all child/referencing tables in correct dependency order
+    db.execute(text("DELETE FROM internal_reassignments WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM gp_verifications WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM employee_postings WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM employee_salary_mapping WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM employee_status_history WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM discrepancy_records WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM employee_documents WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM status_notifications WHERE employee_id = :id"), {"id": del_id})
+    db.execute(text("DELETE FROM employees WHERE employee_id = :id"), {"id": del_id})
+    db.flush()
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        mandal_id=current_user.mandal_id,
+        action="DELETE_EMPLOYEE",
+        entity_type="EMPLOYEE",
+        entity_id=del_id,
+        details=f"Permanently deleted employee {del_name} ({del_id}) and all associated records",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=now
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "message": f"Employee {del_name} ({del_id}) deleted successfully",
+        "employee_id": del_id
     }
 
 # ==========================================

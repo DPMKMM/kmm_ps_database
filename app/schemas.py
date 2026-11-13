@@ -142,6 +142,8 @@ class EmployeeCreateRequest(BaseModel):
     is_draft: bool = False
 
 class EmployeeUpdateRequest(BaseModel):
+    new_employee_id: Optional[str] = None
+    employee_id: Optional[str] = None
     name_ifmis: Optional[str] = None
     dob: Optional[date] = None
     mobile_number: Optional[str] = None
@@ -203,6 +205,12 @@ class EmployeeUpdateRequest(BaseModel):
 
     @field_validator('mobile_number', mode='before')
     def parse_empty_update_mobile(cls, v):
+        if v == '' or v is None:
+            return None
+        return str(v).strip()
+
+    @field_validator('new_employee_id', 'employee_id', mode='before')
+    def parse_empty_update_emp_id(cls, v):
         if v == '' or v is None:
             return None
         return str(v).strip()

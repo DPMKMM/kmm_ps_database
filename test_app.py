@@ -840,5 +840,107 @@ class TestKhammamPSApplication(unittest.TestCase):
         self.assertEqual(self.client.put(f"/api/employees/{emp_id}", headers=k_hdr, json={"mobile_number": "9111111111"}).status_code, 403)
         self.client.post("/api/auth/logout", headers=k_hdr)
 
+    def test_15_employee_code_modification_and_deletion(self):
+        """
+        Verify:
+        1. Editing Employee Code (new_employee_id) migrates all child records atomically.
+        2. Old Employee Code returns 404; new Employee Code is fully accessible.
+        3. Renaming to an existing Employee Code is rejected with HTTP 400.
+        4. Super Admin can delete records without restrictions; child records cascade cleanly.
+        5. Unauthorized users (viewer, other mandal) are blocked from deleting with HTTP 403.
+        """
+        # 1. Admin login & fetch test GPs
+        adm_login = self.client.post("/api/auth/login", json={
+            "username": "admin", "password": "Admin@Khammam2026", "device_info": "Admin Code Edit & Delete Test"
+        })
+        self.assertEqual(adm_login.status_code, 200)
+        adm_hdr = {"Authorization": f"Bearer {adm_login.json()['access_token']}"}
+        e_mandal = self.db.query(Mandal).filter(Mandal.mandal_name.ilike("%enkoor%")).first()
+        e_gp = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == e_mandal.id).first()
+
+        # Register employee EMP-CODE-01
+        res1 = self.client.post("/api/employees/stage1-register", headers=adm_hdr, json={
+            "employee_id": "EMP-CODE-01",
+            "name_ifmis": "Original Code PS",
+            "mobile_number": "9800011111",
+            "designation": "Panchayat Secretary Grade-IV",
+            "dob": "1992-05-15",
+            "registration_mandal_id": e_mandal.id
+        })
+        self.assertEqual(res1.status_code, 201)
+
+        # Stage 2 & 3 mapping
+        res2 = self.client.post("/api/employees/stage2-combined-mapping", headers=adm_hdr, json={
+            "employee_id": "EMP-CODE-01",
+            "salary_gp_lgd": e_gp.lgd_code,
+            "salary_claiming_status": "YES",
+            "working_from_date": "2026-01-01",
+            "service_status": "WORKING",
+            "is_working_in_salary_gp": True,
+            "posting_type": "OWN_GP",
+            "actual_working_gp_lgd": e_gp.lgd_code
+        })
+        self.assertEqual(res2.status_code, 200)
+
+        # 2. Modify Employee Code to EMP-CODE-02 and change name
+        upd = self.client.put("/api/employees/EMP-CODE-01", headers=adm_hdr, json={
+            "new_employee_id": "EMP-CODE-02",
+            "name_ifmis": "Renamed Code PS",
+            "mobile_number": "9800022222"
+        })
+        self.assertEqual(upd.status_code, 200)
+        upd_data = upd.json()
+        self.assertEqual(upd_data["employee_id"], "EMP-CODE-02")
+        self.assertIn("EMPLOYEE_CODE", upd_data["updated_sections"])
+
+        # Old ID is gone; new ID is live
+        self.assertEqual(self.client.get("/api/employees/EMP-CODE-01", headers=adm_hdr).status_code, 404)
+        prof_new = self.client.get("/api/employees/EMP-CODE-02", headers=adm_hdr)
+        self.assertEqual(prof_new.status_code, 200)
+        p_data = prof_new.json()
+        self.assertEqual(p_data["name_ifmis"], "Renamed Code PS")
+        self.assertEqual(p_data["mobile_number"], "9800022222")
+        self.assertEqual(p_data["salary_gp_lgd"], e_gp.lgd_code)
+        self.assertEqual(p_data["current_posting"]["posting_type"], "OWN_GP")
+
+        # 3. Create another employee EMP-CODE-03 and verify duplicate rejection on rename
+        res3 = self.client.post("/api/employees/stage1-register", headers=adm_hdr, json={
+            "employee_id": "EMP-CODE-03",
+            "name_ifmis": "Another PS",
+            "registration_mandal_id": e_mandal.id
+        })
+        self.assertEqual(res3.status_code, 201)
+
+        dup_rename = self.client.put("/api/employees/EMP-CODE-02", headers=adm_hdr, json={
+            "new_employee_id": "EMP-CODE-03"
+        })
+        self.assertEqual(dup_rename.status_code, 400)
+        self.assertIn("already registered", dup_rename.json()["detail"])
+
+        # 4. Deletion permission checks
+        # Viewer cannot delete
+        v_login = self.client.post("/api/auth/login", json={"username": "viewer", "password": "Viewer@Khammam2026"})
+        v_hdr = {"Authorization": f"Bearer {v_login.json()['access_token']}"}
+        self.assertEqual(self.client.delete("/api/employees/EMP-CODE-02", headers=v_hdr).status_code, 403)
+        self.client.post("/api/auth/logout", headers=v_hdr)
+
+        # Kallur mandal admin cannot delete Enkoor's employee
+        k_login = self.client.post("/api/auth/login", json={"username": "kallur", "password": "Mandal@5069"})
+        k_hdr = {"Authorization": f"Bearer {k_login.json()['access_token']}"}
+        self.assertEqual(self.client.delete("/api/employees/EMP-CODE-02", headers=k_hdr).status_code, 403)
+        self.client.post("/api/auth/logout", headers=k_hdr)
+
+        # 5. Super Admin deletes EMP-CODE-02
+        del_res = self.client.delete("/api/employees/EMP-CODE-02", headers=adm_hdr)
+        self.assertEqual(del_res.status_code, 200)
+        self.assertEqual(del_res.json()["employee_id"], "EMP-CODE-02")
+
+        # Verify EMP-CODE-02 no longer exists
+        self.assertEqual(self.client.get("/api/employees/EMP-CODE-02", headers=adm_hdr).status_code, 404)
+
+        # Clean up EMP-CODE-03
+        self.assertEqual(self.client.delete("/api/employees/EMP-CODE-03", headers=adm_hdr).status_code, 200)
+        self.client.post("/api/auth/logout", headers=adm_hdr)
+
 if __name__ == "__main__":
     unittest.main()

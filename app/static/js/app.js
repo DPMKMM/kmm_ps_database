@@ -1448,6 +1448,7 @@ async function loadStage1EmployeesList() {
           <td class="px-3.5 py-2.5 text-center">${s3Badge}</td>
           <td class="px-3.5 py-2.5 text-right space-x-1 whitespace-nowrap">
             ${emp.can_edit !== false && currentUser?.role !== "VIEWER" ? `<button onclick="openEditEmployeeModal('${escapeReportCell(emp.employee_id)}')" class="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[11px] font-semibold transition" title="Edit Employee Data">Edit</button>` : ""}
+            ${(currentUser?.role === "SUPER_ADMIN" || emp.can_delete) ? `<button onclick="handleDeleteEmployee('${escapeReportCell(emp.employee_id)}', '${escapeReportCell(emp.name_ifmis)}')" class="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[11px] font-semibold transition" title="Delete Employee Record">Delete</button>` : ""}
             <button onclick="proceedToStage2('${escapeReportCell(emp.employee_id)}')" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-[11px] font-semibold transition" title="Map Salary GP & Working Station">
               Map Salary & Station →
             </button>
@@ -2844,6 +2845,7 @@ function filterReconciliationTable() {
         <td class="px-2.5 py-2 font-bold text-slate-900">
           <span>${escapeReportCell(row[1])}</span>
           ${canEditReconRow ? `<button onclick="openEditEmployeeModal('${escapeReportCell(row[2])}')" class="ml-1.5 px-1.5 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[10px] font-bold no-print" title="Edit Employee Record">Edit</button>` : ""}
+          ${currentUser?.role === "SUPER_ADMIN" ? `<button onclick="handleDeleteEmployee('${escapeReportCell(row[2])}', '${escapeReportCell(row[1])}')" class="ml-1 px-1.5 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[10px] font-bold no-print" title="Delete Employee Record">Delete</button>` : ""}
         </td>
         <td class="px-2.5 py-2 font-mono font-bold text-govblue-900">${escapeReportCell(row[2])}</td>
         <td class="px-2.5 py-2 font-mono text-slate-600">${row[3]}</td>
@@ -3820,6 +3822,7 @@ async function loadEmployeeMasterData() {
           <td class="px-3.5 py-2.5">${verifBadge}</td>
           <td class="px-3.5 py-2.5 text-right whitespace-nowrap space-x-1">
             ${e.can_edit ? `<button onclick="openEditEmployeeModal('${escapeReportCell(e.employee_id)}')" class="px-2 py-1 bg-amber-100 text-amber-900 hover:bg-amber-200 rounded text-[11px] font-semibold">Edit</button>` : ""}
+            ${(currentUser?.role === "SUPER_ADMIN" || e.can_delete) ? `<button onclick="handleDeleteEmployee('${escapeReportCell(e.employee_id)}', '${escapeReportCell(e.name_ifmis)}')" class="px-2 py-1 bg-rose-100 text-rose-800 hover:bg-rose-200 rounded text-[11px] font-semibold transition" title="Delete Employee Record">Delete</button>` : ""}
             <button onclick="viewEmployeeProfile('${escapeReportCell(e.employee_id)}')" class="px-2 py-1 bg-govblue-50 text-govblue-900 hover:bg-govblue-100 rounded text-[11px] font-semibold">Profile</button>
           </td>
         </tr>
@@ -3876,6 +3879,7 @@ async function viewEmployeeProfile(empId) {
           </div>
           <div class="flex items-center space-x-2">
             ${p.can_edit ? `<button onclick="openEditEmployeeModal('${escapeReportCell(p.employee_id)}')" class="px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold rounded text-xs shadow flex items-center gap-1"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit Record</button>` : ""}
+            ${(currentUser?.role === "SUPER_ADMIN" || p.can_delete) ? `<button onclick="handleDeleteEmployee('${escapeReportCell(p.employee_id)}', '${escapeReportCell(p.name_ifmis)}')" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-xs shadow flex items-center gap-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete Record</button>` : ""}
             ${statusBadge}
           </div>
         </div>
@@ -4027,18 +4031,31 @@ async function openEditEmployeeModal(empId) {
               <input type="text" id="edit-emp-name" required value="${escapeReportCell(p.name_ifmis)}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
             </div>
             <div>
+              <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Employee Code / IFMIS ID <span class="text-rose-600">*</span></label>
+              <input type="text" id="edit-emp-code" required value="${escapeReportCell(p.employee_id)}" ${isAdmin ? "" : "readonly"} class="w-full p-2 border border-slate-300 rounded font-mono font-bold ${isAdmin ? 'bg-white focus:ring-1 focus:ring-govblue-800' : 'bg-slate-100 text-slate-500 cursor-not-allowed'} outline-none" placeholder="e.g. 101001">
+              ${isAdmin ? '<span class="text-[9px] text-amber-700 font-semibold block mt-0.5">Admin: You can modify the Employee Code without restrictions.</span>' : ''}
+            </div>
+            <div>
               <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Mobile Number</label>
               <input type="tel" id="edit-emp-mobile" maxlength="10" value="${escapeReportCell(mobileVal)}" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)" placeholder="10-digit mobile number" class="w-full p-2 border border-slate-300 rounded bg-white font-mono outline-none">
             </div>
             <div>
               <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Designation</label>
-              <select id="edit-emp-designation" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">${desigOptions}</select>
+              <input type="text" id="edit-emp-designation" list="designation-options" value="${escapeReportCell(curDesig)}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800" placeholder="e.g. Panchayat Secretary Grade-IV">
+              <datalist id="designation-options">
+                <option value="Panchayat Secretary Grade-I">
+                <option value="Panchayat Secretary Grade-II">
+                <option value="Panchayat Secretary Grade-III">
+                <option value="Panchayat Secretary Grade-IV">
+                <option value="Junior Panchayat Secretary (JPS)">
+                <option value="Temporary / In-charge PS">
+              </datalist>
             </div>
             <div>
               <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Date of Birth</label>
               <input type="date" id="edit-emp-dob" value="${escapeReportCell(p.dob_raw || '')}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none">
             </div>
-            <div class="md:col-span-2">
+            <div>
               <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Registration Mandal</label>
               <select id="edit-emp-reg-mandal" ${isMandal ? "disabled" : ""} class="w-full p-2 border border-slate-300 rounded bg-white disabled:bg-slate-100 outline-none">${regMandalOptions}</select>
             </div>
@@ -4186,11 +4203,20 @@ async function openEditEmployeeModal(empId) {
           </div>
         </div>
 
-        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-200">
-          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded">Cancel</button>
-          <button type="submit" id="btn-save-edit-emp" class="px-5 py-2 bg-govblue-900 hover:bg-govblue-800 text-white font-bold rounded shadow flex items-center gap-1.5">
-            <i data-lucide="save" class="w-4 h-4"></i> Save Changes
-          </button>
+        <div class="flex justify-between items-center pt-3 border-t border-slate-200">
+          <div>
+            ${(isAdmin || p.can_delete) ? `
+              <button type="button" onclick="handleDeleteEmployee('${escapeReportCell(p.employee_id)}', '${escapeReportCell(p.name_ifmis)}')" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded shadow flex items-center gap-1.5 text-xs transition">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Employee Record
+              </button>
+            ` : ''}
+          </div>
+          <div class="flex space-x-2">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded">Cancel</button>
+            <button type="submit" id="btn-save-edit-emp" class="px-5 py-2 bg-govblue-900 hover:bg-govblue-800 text-white font-bold rounded shadow flex items-center gap-1.5">
+              <i data-lucide="save" class="w-4 h-4"></i> Save Changes
+            </button>
+          </div>
         </div>
       </form>
     `;
@@ -4265,10 +4291,11 @@ async function handleEditEmployeeSubmit(e, empId) {
   e.preventDefault();
   const btn = document.getElementById("btn-save-edit-emp");
   const salGpVal = document.getElementById("edit-emp-salary-gp").value;
+  const newEmpCode = document.getElementById("edit-emp-code")?.value.trim();
   const payload = {
     name_ifmis: document.getElementById("edit-emp-name").value.trim(),
     mobile_number: document.getElementById("edit-emp-mobile").value.trim() || null,
-    designation: document.getElementById("edit-emp-designation").value,
+    designation: document.getElementById("edit-emp-designation").value.trim() || null,
     dob: document.getElementById("edit-emp-dob").value || null,
     service_status: document.getElementById("edit-emp-service-status").value,
     proceedings_order_no: document.getElementById("edit-emp-status-order-no").value.trim() || null,
@@ -4276,6 +4303,10 @@ async function handleEditEmployeeSubmit(e, empId) {
     expected_joining_date: document.getElementById("edit-emp-expected-joining").value || null,
     reason_remarks: document.getElementById("edit-emp-status-remarks").value.trim() || null
   };
+
+  if (newEmpCode && newEmpCode !== empId) {
+    payload.new_employee_id = newEmpCode;
+  }
 
   if (currentUser && currentUser.role === "SUPER_ADMIN") {
     const regM = document.getElementById("edit-emp-reg-mandal").value;
@@ -4357,6 +4388,38 @@ async function handleEditEmployeeSubmit(e, empId) {
       btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save Changes`;
       lucide.createIcons();
     }
+  }
+}
+
+async function handleDeleteEmployee(empId, empName) {
+  if (!empId) return;
+  const displayName = empName || empId;
+  const confirmed = confirm(
+    `Are you sure you want to permanently DELETE employee record:\n\n` +
+    `• Name: ${displayName}\n` +
+    `• Employee Code: ${empId}\n\n` +
+    `This will permanently remove the employee from all registers, salary mappings, status histories, and postings.\n\n` +
+    `Click OK to proceed with permanent deletion.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetchAPI(`/employees/${encodeURIComponent(empId)}`, {
+      method: "DELETE"
+    });
+    closeModal();
+    alert(res.message || `Employee ${displayName} (${empId}) deleted successfully.`);
+
+    if (currentRoute === "employee-master") loadEmployeeMasterData();
+    else if (currentRoute === "stage1-employee-reg") loadStage1EmployeesList();
+    else if (currentRoute === "reconciliation-report") loadReconciliationReportData();
+    else if (currentRoute === "employee-tracking") executeTrackingSearch();
+    else if (currentRoute === "reports") loadReportPreview();
+    else if (currentRoute === "gp-master") loadGPMasterData();
+    else if (currentRoute === "availability") renderAvailabilityView();
+    else if (currentRoute === "dashboard") renderDashboardView();
+  } catch (err) {
+    alert("Failed to delete employee: " + (err.detail || err.message));
   }
 }
 
