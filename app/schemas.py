@@ -29,6 +29,37 @@ class ForceLogoutRequest(BaseModel):
     username: Optional[str] = None
     session_id: Optional[str] = None
 
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    display_name: Optional[str] = None
+    role: str = "MANDAL_ADMIN"  # SUPER_ADMIN, MANDAL_ADMIN, VIEWER
+    mandal_id: Optional[int] = None
+    is_active: bool = True
+    must_change_password: bool = False
+
+    @field_validator('username')
+    def validate_username(cls, v):
+        v = str(v).strip()
+        if not v or len(v) < 3:
+            raise ValueError("Username must be at least 3 characters long")
+        return v
+
+    @field_validator('password')
+    def validate_password(cls, v):
+        v = str(v).strip()
+        if not v or len(v) < 6:
+            raise ValueError("Password must be at least 6 characters long")
+        return v
+
+class UserUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+    mandal_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+    must_change_password: Optional[bool] = None
+
 class UserOut(BaseModel):
     id: int
     username: str

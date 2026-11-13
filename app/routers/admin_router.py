@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,7 +10,7 @@ from app.models import (
     User, Mandal, UserSession, LoginHistory, AuditLog, DataSubmission
 )
 from app.auth import get_current_user, require_super_admin, hash_password
-from app.schemas import DataSubmissionPayload
+from app.schemas import DataSubmissionPayload, UserCreateRequest, UserUpdateRequest
 
 router = APIRouter(prefix="/api/admin", tags=["District Super Admin Controls"])
 
@@ -54,6 +54,230 @@ def list_users(
             "active_session_device": latest_sess.device_info if latest_sess else None
         })
     return results
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreateRequest,
+    request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    username = payload.username.strip()
+    existing = db.query(User).filter(func.lower(User.username) == username.lower()).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User with username '{username}' already exists."
+        )
+
+    if payload.role not in ("SUPER_ADMIN", "MANDAL_ADMIN", "VIEWER"):
+        raise HTTPException(status_code=400, detail="Invalid user role. Must be SUPER_ADMIN, MANDAL_ADMIN, or VIEWER.")
+
+    mandal = None
+    mandal_id = None
+    mandal_lgd = None
+
+    if payload.role == "MANDAL_ADMIN":
+        if not payload.mandal_id:
+            raise HTTPException(status_code=400, detail="Mandal assignment is required for MANDAL_ADMIN role.")
+        mandal = db.query(Mandal).filter(Mandal.id == payload.mandal_id).first()
+        if not mandal:
+            raise HTTPException(status_code=400, detail="Invalid Mandal ID.")
+        mandal_id = mandal.id
+        mandal_lgd = mandal.mandal_lgd
+    elif payload.mandal_id:
+        mandal = db.query(Mandal).filter(Mandal.id == payload.mandal_id).first()
+        if mandal:
+            mandal_id = mandal.id
+            mandal_lgd = mandal.mandal_lgd
+
+    disp_name = (payload.display_name or "").strip()
+    if not disp_name:
+        if mandal:
+            disp_name = f"{mandal.mandal_name} Mandal Admin"
+        elif payload.role == "SUPER_ADMIN":
+            disp_name = "District Super Admin"
+        else:
+            disp_name = "District Viewer"
+
+    new_user = User(
+        username=username,
+        display_name=disp_name,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        mandal_id=mandal_id,
+        mandal_lgd=mandal_lgd,
+        is_active=payload.is_active,
+        must_change_password=payload.must_change_password,
+        failed_attempts=0,
+        is_locked=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_user)
+    db.flush()
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        action="CREATE_USER",
+        entity_type="USER",
+        entity_id=str(new_user.id),
+        details=f"Created user {new_user.username} with role {new_user.role} (Mandal: {mandal.mandal_name if mandal else 'District'})",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=datetime.utcnow()
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "message": f"User {new_user.username} created successfully.",
+        "user_id": new_user.id,
+        "username": new_user.username,
+        "role": new_user.role
+    }
+
+@router.put("/users/{user_id}")
+def update_user(
+    user_id: int,
+    payload: UserUpdateRequest,
+    request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Protection: super admin cannot deactivate or demote own account
+    if current_user.id == user.id:
+        if payload.is_active is False:
+            raise HTTPException(status_code=400, detail="You cannot deactivate your own logged-in admin account.")
+        if payload.role and payload.role != "SUPER_ADMIN":
+            raise HTTPException(status_code=400, detail="You cannot demote your own logged-in admin account.")
+
+    if payload.role:
+        if payload.role not in ("SUPER_ADMIN", "MANDAL_ADMIN", "VIEWER"):
+            raise HTTPException(status_code=400, detail="Invalid user role.")
+        user.role = payload.role
+
+    if payload.mandal_id is not None:
+        if payload.mandal_id == 0:
+            user.mandal_id = None
+            user.mandal_lgd = None
+        else:
+            mandal = db.query(Mandal).filter(Mandal.id == payload.mandal_id).first()
+            if not mandal:
+                raise HTTPException(status_code=400, detail="Invalid Mandal ID.")
+            user.mandal_id = mandal.id
+            user.mandal_lgd = mandal.mandal_lgd
+
+    if payload.display_name is not None:
+        user.display_name = payload.display_name.strip() or user.display_name
+
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+
+    if payload.must_change_password is not None:
+        user.must_change_password = payload.must_change_password
+
+    if payload.password and payload.password.strip():
+        pwd = payload.password.strip()
+        if len(pwd) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+        user.password_hash = hash_password(pwd)
+        user.failed_attempts = 0
+        user.is_locked = False
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        action="UPDATE_USER",
+        entity_type="USER",
+        entity_id=str(user.id),
+        details=f"Updated user {user.username} (Role: {user.role}, Active: {user.is_active})",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=datetime.utcnow()
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"message": f"User {user.username} updated successfully.", "user_id": user.id}
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user.id == user.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own logged-in admin account.")
+
+    if user.username.lower() == "admin":
+        raise HTTPException(status_code=400, detail="The default district admin account cannot be deleted.")
+
+    del_username = user.username
+
+    # Clean up user sessions
+    db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+    db.delete(user)
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        action="DELETE_USER",
+        entity_type="USER",
+        entity_id=str(user_id),
+        details=f"Permanently deleted user {del_username}",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=datetime.utcnow()
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"message": f"User {del_username} deleted successfully."}
+
+@router.post("/users/{user_id}/toggle-active")
+def toggle_user_active(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user.id == user.id and user.is_active:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own logged-in admin account.")
+
+    if user.username.lower() == "admin" and user.is_active:
+        raise HTTPException(status_code=400, detail="The default district admin account cannot be deactivated.")
+
+    user.is_active = not user.is_active
+    new_state = "ACTIVATED" if user.is_active else "DEACTIVATED"
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        action="TOGGLE_USER_ACTIVE",
+        entity_type="USER",
+        entity_id=str(user.id),
+        details=f"{new_state} user {user.username}",
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        timestamp=datetime.utcnow()
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "message": f"User {user.username} is now {'Active' if user.is_active else 'Inactive'}.",
+        "is_active": user.is_active
+    }
 
 @router.post("/users/{user_id}/unlock")
 def unlock_user_account(

@@ -5865,15 +5865,77 @@ async function handleUploadSubmit(e) {
 // ==========================================
 // 14. ADMIN CONTROLS: USERS, SESSIONS & AUDIT
 // ==========================================
+let cachedAdminUsers = [];
+
 async function renderUserManagementView() {
   const container = document.getElementById("view-user-management");
   container.innerHTML = `
-    <div class="flex justify-between items-center mb-5">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
       <div>
-        <h2 class="text-xl font-bold text-slate-900">User Account Administration</h2>
-        <p class="text-xs text-slate-500">Manage Mandal official credentials, unlock locked accounts, and reset passwords</p>
+        <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="users" class="w-5 h-5 text-govblue-900"></i>
+          User Account Administration & Management
+        </h2>
+        <p class="text-xs text-slate-500">Create new user accounts, modify roles, assign mandals, unlock accounts, and reset credentials</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openCreateUserModal()" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow flex items-center gap-1.5 transition">
+          <i data-lucide="user-plus" class="w-4 h-4"></i> Create New User
+        </button>
+        <button onclick="renderUserManagementView()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
+        </button>
       </div>
     </div>
+
+    <!-- Quick Stats Cards -->
+    <div id="users-stats-grid" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+      <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Users</div>
+        <div id="stat-total-users" class="text-xl font-bold text-slate-900 mt-1">--</div>
+      </div>
+      <div class="bg-white p-3.5 rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm">
+        <div class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Super Admins</div>
+        <div id="stat-super-admins" class="text-xl font-bold text-amber-900 mt-1">--</div>
+      </div>
+      <div class="bg-white p-3.5 rounded-xl border border-sky-200 bg-sky-50/30 shadow-sm">
+        <div class="text-[10px] font-bold text-sky-800 uppercase tracking-wider">Mandal Admins</div>
+        <div id="stat-mandal-admins" class="text-xl font-bold text-sky-900 mt-1">--</div>
+      </div>
+      <div class="bg-white p-3.5 rounded-xl border border-purple-200 bg-purple-50/30 shadow-sm">
+        <div class="text-[10px] font-bold text-purple-800 uppercase tracking-wider">Viewers</div>
+        <div id="stat-viewers" class="text-xl font-bold text-purple-900 mt-1">--</div>
+      </div>
+      <div class="bg-white p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-sm">
+        <div class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Active Sessions</div>
+        <div id="stat-online-sessions" class="text-xl font-bold text-emerald-900 mt-1">--</div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div class="relative w-full sm:w-80">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+        <input type="text" id="user-filter-search" oninput="filterUsersTable()" placeholder="Search username, office, or mandal..." class="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-1 focus:ring-govblue-800">
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto">
+        <label class="text-[11px] font-bold text-slate-600 whitespace-nowrap">Filter Role:</label>
+        <select id="user-filter-role" onchange="filterUsersTable()" class="p-1.5 border border-slate-300 rounded-lg text-xs outline-none bg-white font-medium">
+          <option value="ALL">All Roles</option>
+          <option value="SUPER_ADMIN">Super Admins</option>
+          <option value="MANDAL_ADMIN">Mandal Admins</option>
+          <option value="VIEWER">Viewers</option>
+        </select>
+        <label class="text-[11px] font-bold text-slate-600 whitespace-nowrap ml-2">Status:</label>
+        <select id="user-filter-status" onchange="filterUsersTable()" class="p-1.5 border border-slate-300 rounded-lg text-xs outline-none bg-white font-medium">
+          <option value="ALL">All Status</option>
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+          <option value="LOCKED">Locked</option>
+        </select>
+      </div>
+    </div>
+
     <div id="users-table-wrap" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden p-4">
       <div class="text-center py-6 text-slate-400">Loading user accounts...</div>
     </div>
@@ -5882,51 +5944,416 @@ async function renderUserManagementView() {
 
   try {
     const users = await fetchAPI("/admin/users");
-    let rowsHtml = `
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs text-slate-700">
-          <thead class="bg-slate-50 border-b text-[11px] font-bold text-slate-600 uppercase">
-            <tr>
-              <th class="py-2.5 px-3">#</th>
-              <th class="py-2.5 px-3">Username</th>
-              <th class="py-2.5 px-3">Display Name / Office</th>
-              <th class="py-2.5 px-3">Assigned Mandal</th>
-              <th class="py-2.5 px-3 text-center">Role</th>
-              <th class="py-2.5 px-3 text-center">Status</th>
-              <th class="py-2.5 px-3 text-center">Active Session</th>
-              <th class="py-2.5 px-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            ${users.map((u, idx) => `
-              <tr class="table-hover-row">
-                <td class="py-2.5 px-3 font-mono text-slate-400">${idx + 1}</td>
-                <td class="py-2.5 px-3 font-bold font-mono text-slate-900">${u.username}</td>
-                <td class="py-2.5 px-3 font-medium">${u.display_name}</td>
-                <td class="py-2.5 px-3">${u.mandal_name}</td>
-                <td class="py-2.5 px-3 text-center">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'SUPER_ADMIN' ? 'bg-amber-500 text-slate-950' : 'bg-govblue-100 text-govblue-900'}">${u.role}</span>
-                </td>
-                <td class="py-2.5 px-3 text-center">
-                  ${u.is_locked ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white">LOCKED (5 Failed)</span>` : `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">ACTIVE</span>`}
-                </td>
-                <td class="py-2.5 px-3 text-center">
-                  ${u.has_active_session ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800">${u.active_session_count > 1 ? `${u.active_session_count} SESSIONS` : 'LOGGED IN'}</span>` : `<span class="text-slate-400 text-[10px]">OFFLINE</span>`}
-                </td>
-                <td class="py-2.5 px-3 text-right space-x-1.5">
-                  ${u.is_locked ? `<button onclick="handleUnlockUser(${u.id}, '${u.username}')" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold">Unlock</button>` : ''}
-                  <button onclick="handleAdminResetPassword(${u.id}, '${u.username}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[11px]">Reset Pwd</button>
-                  ${u.has_active_session ? `<button onclick="handleAdminForceLogout('${u.username}')" class="px-2 py-1 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded text-[11px] font-bold">Terminate Session(s)</button>` : ''}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-    document.getElementById("users-table-wrap").innerHTML = rowsHtml;
+    cachedAdminUsers = users || [];
+
+    // Populate Stats
+    document.getElementById("stat-total-users").textContent = cachedAdminUsers.length;
+    document.getElementById("stat-super-admins").textContent = cachedAdminUsers.filter(u => u.role === "SUPER_ADMIN").length;
+    document.getElementById("stat-mandal-admins").textContent = cachedAdminUsers.filter(u => u.role === "MANDAL_ADMIN").length;
+    document.getElementById("stat-viewers").textContent = cachedAdminUsers.filter(u => u.role === "VIEWER").length;
+    document.getElementById("stat-online-sessions").textContent = cachedAdminUsers.filter(u => u.has_active_session).length;
+
+    renderFilteredUsersTable(cachedAdminUsers);
   } catch (err) {
     document.getElementById("users-table-wrap").innerHTML = `<div class="py-4 text-center text-red-500">${err.message}</div>`;
+  }
+}
+
+function filterUsersTable() {
+  const query = (document.getElementById("user-filter-search")?.value || "").toLowerCase().trim();
+  const roleFilter = document.getElementById("user-filter-role")?.value || "ALL";
+  const statusFilter = document.getElementById("user-filter-status")?.value || "ALL";
+
+  let filtered = cachedAdminUsers.filter(u => {
+    if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
+    if (statusFilter === "ACTIVE" && (!u.is_active || u.is_locked)) return false;
+    if (statusFilter === "INACTIVE" && u.is_active) return false;
+    if (statusFilter === "LOCKED" && !u.is_locked) return false;
+    if (query) {
+      const match = (
+        (u.username || "").toLowerCase().includes(query) ||
+        (u.display_name || "").toLowerCase().includes(query) ||
+        (u.mandal_name || "").toLowerCase().includes(query) ||
+        (u.role || "").toLowerCase().includes(query)
+      );
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  renderFilteredUsersTable(filtered);
+}
+
+function renderFilteredUsersTable(users) {
+  const wrap = document.getElementById("users-table-wrap");
+  if (!wrap) return;
+
+  if (users.length === 0) {
+    wrap.innerHTML = `<div class="py-8 text-center text-slate-400">No user accounts found matching your filter criteria.</div>`;
+    return;
+  }
+
+  let rowsHtml = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs text-slate-700">
+        <thead class="bg-slate-50 border-b text-[11px] font-bold text-slate-600 uppercase">
+          <tr>
+            <th class="py-2.5 px-3">#</th>
+            <th class="py-2.5 px-3">Username</th>
+            <th class="py-2.5 px-3">Display Name / Office</th>
+            <th class="py-2.5 px-3">Assigned Mandal</th>
+            <th class="py-2.5 px-3 text-center">Role</th>
+            <th class="py-2.5 px-3 text-center">Account Status</th>
+            <th class="py-2.5 px-3 text-center">Active Session</th>
+            <th class="py-2.5 px-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          ${users.map((u, idx) => {
+            const isSelf = currentUser && currentUser.id === u.id;
+            const isDefaultAdmin = u.username.toLowerCase() === "admin";
+            const canDelete = !isSelf && !isDefaultAdmin;
+            const canDeactivate = !isSelf && !isDefaultAdmin;
+
+            let statusBadge = "";
+            if (u.is_locked) {
+              statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white">LOCKED (5 Failed)</span>`;
+            } else if (!u.is_active) {
+              statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">INACTIVE</span>`;
+            } else {
+              statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">ACTIVE</span>`;
+            }
+
+            let roleBadge = "";
+            if (u.role === "SUPER_ADMIN") {
+              roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950">SUPER ADMIN</span>`;
+            } else if (u.role === "MANDAL_ADMIN") {
+              roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-govblue-100 text-govblue-900">MANDAL ADMIN</span>`;
+            } else {
+              roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900">VIEWER</span>`;
+            }
+
+            return `
+              <tr class="table-hover-row">
+                <td class="py-2.5 px-3 font-mono text-slate-400">${idx + 1}</td>
+                <td class="py-2.5 px-3 font-bold font-mono text-slate-900">
+                  <span>${escapeReportCell(u.username)}</span>
+                  ${isSelf ? `<span class="ml-1 text-[9px] px-1 py-0.2 bg-teal-100 text-teal-800 rounded font-semibold">YOU</span>` : ""}
+                </td>
+                <td class="py-2.5 px-3 font-medium">${escapeReportCell(u.display_name)}</td>
+                <td class="py-2.5 px-3">${escapeReportCell(u.mandal_name || "N/A")}</td>
+                <td class="py-2.5 px-3 text-center">${roleBadge}</td>
+                <td class="py-2.5 px-3 text-center">${statusBadge}</td>
+                <td class="py-2.5 px-3 text-center">
+                  ${u.has_active_session ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800">${u.active_session_count > 1 ? `${u.active_session_count} SESSIONS` : "LOGGED IN"}</span>` : `<span class="text-slate-400 text-[10px]">OFFLINE</span>`}
+                </td>
+                <td class="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                  <button onclick="openEditUserModal(${u.id})" class="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[11px] font-semibold transition" title="Edit User Account">Edit</button>
+                  <button onclick="handleAdminResetPassword(${u.id}, '${escapeReportCell(u.username)}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[11px] transition" title="Reset Password">Reset Pwd</button>
+                  ${canDeactivate ? `<button onclick="handleToggleUserActive(${u.id}, '${escapeReportCell(u.username)}', ${u.is_active})" class="px-2 py-1 ${u.is_active ? 'bg-amber-50 hover:bg-amber-100 text-amber-800' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800'} rounded text-[11px] font-semibold transition">${u.is_active ? 'Deactivate' : 'Activate'}</button>` : ''}
+                  ${u.is_locked ? `<button onclick="handleUnlockUser(${u.id}, '${escapeReportCell(u.username)}')" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold transition">Unlock</button>` : ''}
+                  ${canDelete ? `<button onclick="handleDeleteUser(${u.id}, '${escapeReportCell(u.username)}')" class="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[11px] font-semibold transition" title="Delete User">Delete</button>` : ''}
+                  ${u.has_active_session ? `<button onclick="handleAdminForceLogout('${escapeReportCell(u.username)}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded text-[11px] font-bold transition" title="Terminate Session">Kill Session</button>` : ''}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  wrap.innerHTML = rowsHtml;
+}
+
+function openCreateUserModal() {
+  let mandalOpts = `<option value="">-- Select Mandal --</option>`;
+  if (cachedMandals && cachedMandals.length > 0) {
+    cachedMandals.forEach(m => {
+      mandalOpts += `<option value="${m.id}">${escapeReportCell(m.mandal_name)} (LGD: ${m.mandal_lgd})</option>`;
+    });
+  }
+
+  const bodyHtml = `
+    <form id="create-user-form" onsubmit="handleCreateUserSubmit(event)" class="space-y-4 text-xs text-slate-700">
+      <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+        <h4 class="font-bold text-slate-900 uppercase tracking-wider flex items-center border-b border-slate-200 pb-1.5">
+          <i data-lucide="user-plus" class="w-3.5 h-3.5 mr-1.5 text-emerald-600"></i> New User Credentials
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Username / User ID <span class="text-rose-600">*</span></label>
+            <input type="text" id="create-user-username" required autocomplete="off" placeholder="e.g. auditor_kmm or enkoor_asst" class="w-full p-2 border border-slate-300 rounded bg-white font-mono font-bold outline-none focus:ring-1 focus:ring-govblue-800">
+            <span class="text-[9px] text-slate-400 block mt-0.5">Used for signing into the portal. Must be unique.</span>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Initial Password <span class="text-rose-600">*</span></label>
+            <input type="password" id="create-user-password" required minlength="6" placeholder="Min 6 characters (e.g. Mandal@2026)" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+            <span class="text-[9px] text-slate-400 block mt-0.5">Minimum 6 characters required.</span>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Full Name / Display Name</label>
+            <input type="text" id="create-user-display" placeholder="e.g. Mandal Panchayat Officer / Auditor" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">User Role <span class="text-rose-600">*</span></label>
+            <select id="create-user-role" onchange="handleUserRoleChange('create')" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none focus:ring-1 focus:ring-govblue-800">
+              <option value="MANDAL_ADMIN" selected>MANDAL_ADMIN (Mandal Level Officer)</option>
+              <option value="VIEWER">VIEWER (District Viewer - Read Only)</option>
+              <option value="SUPER_ADMIN">SUPER_ADMIN (District Super Admin)</option>
+            </select>
+          </div>
+          <div id="create-user-mandal-wrap" class="md:col-span-2">
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Assigned Mandal <span class="text-rose-600">*</span></label>
+            <select id="create-user-mandal" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+              ${mandalOpts}
+            </select>
+            <span class="text-[9px] text-slate-400 block mt-0.5">Required for Mandal Admins to scope data isolation.</span>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200 flex flex-col sm:flex-row gap-4">
+          <label class="flex items-center space-x-2 text-xs cursor-pointer">
+            <input type="checkbox" id="create-user-active" checked class="rounded text-govblue-900 focus:ring-govblue-800">
+            <span class="font-medium text-slate-800">Account is Active immediately</span>
+          </label>
+          <label class="flex items-center space-x-2 text-xs cursor-pointer">
+            <input type="checkbox" id="create-user-must-change" class="rounded text-govblue-900 focus:ring-govblue-800">
+            <span class="font-medium text-slate-800">Require password change upon first login</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded">Cancel</button>
+        <button type="submit" id="btn-submit-create-user" class="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded shadow flex items-center gap-1.5">
+          <i data-lucide="check" class="w-4 h-4"></i> Create User
+        </button>
+      </div>
+    </form>
+  `;
+
+  openModal("Create New User Account", bodyHtml);
+}
+
+function handleUserRoleChange(mode) {
+  const role = document.getElementById(`${mode}-user-role`)?.value;
+  const mandalWrap = document.getElementById(`${mode}-user-mandal-wrap`);
+  if (mandalWrap) {
+    mandalWrap.classList.toggle("hidden", role !== "MANDAL_ADMIN");
+  }
+}
+
+async function handleCreateUserSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById("btn-submit-create-user");
+  const username = document.getElementById("create-user-username")?.value.trim();
+  const password = document.getElementById("create-user-password")?.value.trim();
+  const displayName = document.getElementById("create-user-display")?.value.trim();
+  const role = document.getElementById("create-user-role")?.value;
+  const mandalVal = document.getElementById("create-user-mandal")?.value;
+  const isActive = document.getElementById("create-user-active")?.checked;
+  const mustChange = document.getElementById("create-user-must-change")?.checked;
+
+  if (!username || username.length < 3) {
+    alert("Username must be at least 3 characters long.");
+    return;
+  }
+  if (!password || password.length < 6) {
+    alert("Password must be at least 6 characters long.");
+    return;
+  }
+  if (role === "MANDAL_ADMIN" && !mandalVal) {
+    alert("Please select an Assigned Mandal for the Mandal Admin account.");
+    return;
+  }
+
+  const payload = {
+    username: username,
+    password: password,
+    display_name: displayName || null,
+    role: role,
+    mandal_id: (role === "MANDAL_ADMIN" && mandalVal) ? parseInt(mandalVal) : null,
+    is_active: isActive !== false,
+    must_change_password: Boolean(mustChange)
+  };
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Creating...";
+  }
+
+  try {
+    const res = await fetchAPI("/admin/users", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    closeModal();
+    alert(res.message || `User ${username} created successfully.`);
+    renderUserManagementView();
+  } catch (err) {
+    alert("Failed to create user: " + (err.detail || err.message));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Create User`;
+      lucide.createIcons();
+    }
+  }
+}
+
+function openEditUserModal(userId) {
+  const user = cachedAdminUsers.find(u => Number(u.id) === Number(userId));
+  if (!user) {
+    alert("User details not found.");
+    return;
+  }
+
+  const isSelf = currentUser && currentUser.id === user.id;
+  let mandalOpts = `<option value="0">-- None (District Wide) --</option>`;
+  if (cachedMandals && cachedMandals.length > 0) {
+    cachedMandals.forEach(m => {
+      const sel = Number(user.mandal_id) === Number(m.id) ? "selected" : "";
+      mandalOpts += `<option value="${m.id}" ${sel}>${escapeReportCell(m.mandal_name)} (LGD: ${m.mandal_lgd})</option>`;
+    });
+  }
+
+  const bodyHtml = `
+    <form id="edit-user-form" onsubmit="handleEditUserSubmit(event, ${user.id})" class="space-y-4 text-xs text-slate-700">
+      <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+        <div class="flex justify-between items-center border-b border-slate-200 pb-1.5">
+          <h4 class="font-bold text-slate-900 uppercase tracking-wider flex items-center">
+            <i data-lucide="user" class="w-3.5 h-3.5 mr-1.5 text-amber-600"></i> Edit User: ${escapeReportCell(user.username)}
+          </h4>
+          <span class="font-mono font-bold text-govblue-900">User ID: ${user.id}</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Username</label>
+            <input type="text" value="${escapeReportCell(user.username)}" disabled class="w-full p-2 border border-slate-200 rounded bg-slate-100 font-mono font-bold text-slate-500 cursor-not-allowed">
+            <span class="text-[9px] text-slate-400 block mt-0.5">Username cannot be renamed once created.</span>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Display Name / Office <span class="text-rose-600">*</span></label>
+            <input type="text" id="edit-user-display" required value="${escapeReportCell(user.display_name)}" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Role</label>
+            <select id="edit-user-role" ${isSelf ? "disabled" : ""} onchange="handleUserRoleChange('edit')" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none focus:ring-1 focus:ring-govblue-800 disabled:bg-slate-100 disabled:text-slate-500">
+              <option value="SUPER_ADMIN" ${user.role === "SUPER_ADMIN" ? "selected" : ""}>SUPER_ADMIN (District Super Admin)</option>
+              <option value="MANDAL_ADMIN" ${user.role === "MANDAL_ADMIN" ? "selected" : ""}>MANDAL_ADMIN (Mandal Level Officer)</option>
+              <option value="VIEWER" ${user.role === "VIEWER" ? "selected" : ""}>VIEWER (District Viewer - Read Only)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Account Active Status</label>
+            <select id="edit-user-active" ${isSelf ? "disabled" : ""} class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none focus:ring-1 focus:ring-govblue-800 disabled:bg-slate-100 disabled:text-slate-500">
+              <option value="true" ${user.is_active ? "selected" : ""}>Active</option>
+              <option value="false" ${!user.is_active ? "selected" : ""}>Inactive / Deactivated</option>
+            </select>
+          </div>
+          <div id="edit-user-mandal-wrap" class="${user.role === 'MANDAL_ADMIN' ? '' : 'hidden'} md:col-span-2">
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Assigned Mandal</label>
+            <select id="edit-user-mandal" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+              ${mandalOpts}
+            </select>
+          </div>
+          <div class="md:col-span-2 pt-2 border-t border-slate-200">
+            <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Set New Password (Optional)</label>
+            <input type="password" id="edit-user-new-pwd" placeholder="Leave empty to keep existing password" class="w-full p-2 border border-slate-300 rounded bg-white outline-none focus:ring-1 focus:ring-govblue-800">
+            <span class="text-[9px] text-slate-400 block mt-0.5">Enter at least 6 characters if you wish to change the password.</span>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200">
+          <label class="flex items-center space-x-2 text-xs cursor-pointer">
+            <input type="checkbox" id="edit-user-must-change" ${user.must_change_password ? "checked" : ""} class="rounded text-govblue-900 focus:ring-govblue-800">
+            <span class="font-medium text-slate-800">Require password change upon next login</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded">Cancel</button>
+        <button type="submit" id="btn-submit-edit-user" class="px-5 py-2 bg-govblue-900 hover:bg-govblue-800 text-white font-bold rounded shadow flex items-center gap-1.5">
+          <i data-lucide="save" class="w-4 h-4"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  `;
+
+  openModal(`Manage User: ${user.username}`, bodyHtml);
+}
+
+async function handleEditUserSubmit(e, userId) {
+  e.preventDefault();
+  const btn = document.getElementById("btn-submit-edit-user");
+  const displayName = document.getElementById("edit-user-display")?.value.trim();
+  const role = document.getElementById("edit-user-role")?.value;
+  const mandalVal = document.getElementById("edit-user-mandal")?.value;
+  const isActive = document.getElementById("edit-user-active")?.value === "true";
+  const newPwd = document.getElementById("edit-user-new-pwd")?.value.trim();
+  const mustChange = document.getElementById("edit-user-must-change")?.checked;
+
+  const payload = {
+    display_name: displayName || null,
+    role: role,
+    mandal_id: (role === "MANDAL_ADMIN" && mandalVal) ? parseInt(mandalVal) : 0,
+    is_active: isActive,
+    must_change_password: Boolean(mustChange)
+  };
+
+  if (newPwd) {
+    if (newPwd.length < 6) {
+      alert("New password must be at least 6 characters long.");
+      return;
+    }
+    payload.password = newPwd;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+  }
+
+  try {
+    const res = await fetchAPI(`/admin/users/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    closeModal();
+    alert(res.message || "User account updated successfully.");
+    renderUserManagementView();
+  } catch (err) {
+    alert("Failed to update user: " + (err.detail || err.message));
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save Changes`;
+      lucide.createIcons();
+    }
+  }
+}
+
+async function handleToggleUserActive(userId, username, currentStatus) {
+  const actionName = currentStatus ? "deactivate" : "activate";
+  if (!confirm(`Are you sure you want to ${actionName} user '${username}'?`)) return;
+
+  try {
+    const res = await fetchAPI(`/admin/users/${userId}/toggle-active`, { method: "POST" });
+    alert(res.message || `User account ${username} ${actionName}d successfully.`);
+    renderUserManagementView();
+  } catch (err) {
+    alert(`Failed to ${actionName} user: ` + (err.detail || err.message));
+  }
+}
+
+async function handleDeleteUser(userId, username) {
+  if (!confirm(`Are you sure you want to permanently DELETE user account '${username}'?\n\nThis will terminate their active sessions and remove the account from the system.\n\nClick OK to confirm.`)) return;
+
+  try {
+    const res = await fetchAPI(`/admin/users/${userId}`, { method: "DELETE" });
+    alert(res.message || `User ${username} deleted successfully.`);
+    renderUserManagementView();
+  } catch (err) {
+    alert("Failed to delete user: " + (err.detail || err.message));
   }
 }
 

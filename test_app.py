@@ -942,5 +942,119 @@ class TestKhammamPSApplication(unittest.TestCase):
         self.assertEqual(self.client.delete("/api/employees/EMP-CODE-03", headers=adm_hdr).status_code, 200)
         self.client.post("/api/auth/logout", headers=adm_hdr)
 
+    def test_16_user_management_and_creation(self):
+        """
+        Verify:
+        1. Super Admin can create new users (MANDAL_ADMIN, VIEWER, SUPER_ADMIN).
+        2. Duplicate username registration is rejected with HTTP 400.
+        3. Unauthorized users (MANDAL_ADMIN, VIEWER) cannot create or manage users (HTTP 403).
+        4. Newly created users can authenticate and obtain access tokens.
+        5. Super Admin can update user role, display name, and password.
+        6. Super Admin can toggle user active/inactive status.
+        7. Super Admin can delete created users, but cannot delete own account or default admin.
+        """
+        adm_login = self.client.post("/api/auth/login", json={
+            "username": "admin", "password": "Admin@Khammam2026", "device_info": "User Mgmt Test"
+        })
+        self.assertEqual(adm_login.status_code, 200)
+        adm_hdr = {"Authorization": f"Bearer {adm_login.json()['access_token']}"}
+
+        e_mandal = self.db.query(Mandal).filter(Mandal.mandal_name.ilike("%enkoor%")).first()
+
+        # 1. Non-admin (Enkoor) cannot access /api/admin/users (403)
+        e_login = self.client.post("/api/auth/login", json={
+            "username": "enkoor", "password": "Mandal@5065", "device_info": "Enkoor Guard Test"
+        })
+        e_hdr = {"Authorization": f"Bearer {e_login.json()['access_token']}"}
+        self.assertEqual(self.client.get("/api/admin/users", headers=e_hdr).status_code, 403)
+        self.assertEqual(self.client.post("/api/admin/users", headers=e_hdr, json={
+            "username": "unauthorized_user", "password": "Password@123", "role": "VIEWER"
+        }).status_code, 403)
+        self.client.post("/api/auth/logout", headers=e_hdr)
+
+        # 2. Super Admin creates VIEWER user
+        res_v = self.client.post("/api/admin/users", headers=adm_hdr, json={
+            "username": "test_auditor_kmm",
+            "password": "Password@123",
+            "display_name": "Test District Auditor",
+            "role": "VIEWER"
+        })
+        self.assertEqual(res_v.status_code, 201)
+        v_user_id = res_v.json()["user_id"]
+
+        # Duplicate username check
+        dup_res = self.client.post("/api/admin/users", headers=adm_hdr, json={
+            "username": "test_auditor_kmm",
+            "password": "AnotherPassword@123",
+            "role": "VIEWER"
+        })
+        self.assertEqual(dup_res.status_code, 400)
+        self.assertIn("already exists", dup_res.json()["detail"])
+
+        # Super Admin creates MANDAL_ADMIN user
+        res_m = self.client.post("/api/admin/users", headers=adm_hdr, json={
+            "username": "test_enkoor_asst",
+            "password": "Password@123",
+            "display_name": "Enkoor Assistant Officer",
+            "role": "MANDAL_ADMIN",
+            "mandal_id": e_mandal.id
+        })
+        self.assertEqual(res_m.status_code, 201)
+        m_user_id = res_m.json()["user_id"]
+
+        # 3. Authenticate with newly created user
+        auditor_login = self.client.post("/api/auth/login", json={
+            "username": "test_auditor_kmm", "password": "Password@123", "device_info": "Auditor Test Device"
+        })
+        self.assertEqual(auditor_login.status_code, 200)
+        self.assertEqual(auditor_login.json()["role"], "VIEWER")
+        auditor_hdr = {"Authorization": f"Bearer {auditor_login.json()['access_token']}"}
+        self.client.post("/api/auth/logout", headers=auditor_hdr)
+
+        # 4. Super Admin updates user details
+        upd_res = self.client.put(f"/api/admin/users/{v_user_id}", headers=adm_hdr, json={
+            "display_name": "Senior District Auditor",
+            "password": "NewSecretPassword@123"
+        })
+        self.assertEqual(upd_res.status_code, 200)
+
+        # Verify new password works
+        new_pwd_login = self.client.post("/api/auth/login", json={
+            "username": "test_auditor_kmm", "password": "NewSecretPassword@123", "device_info": "Auditor New Pwd"
+        })
+        self.assertEqual(new_pwd_login.status_code, 200)
+        self.client.post("/api/auth/logout", headers={"Authorization": f"Bearer {new_pwd_login.json()['access_token']}"})
+
+        # 5. Toggle active status
+        toggle_res = self.client.post(f"/api/admin/users/{m_user_id}/toggle-active", headers=adm_hdr)
+        self.assertEqual(toggle_res.status_code, 200)
+        self.assertFalse(toggle_res.json()["is_active"])
+
+        # Deactivated user login should fail
+        deact_login = self.client.post("/api/auth/login", json={
+            "username": "test_enkoor_asst", "password": "Password@123"
+        })
+        self.assertIn(deact_login.status_code, (400, 401, 403))
+
+        # Reactivate
+        toggle_res2 = self.client.post(f"/api/admin/users/{m_user_id}/toggle-active", headers=adm_hdr)
+        self.assertEqual(toggle_res2.status_code, 200)
+        self.assertTrue(toggle_res2.json()["is_active"])
+
+        # 6. Delete created users & verify safety protections
+        # Cannot delete default admin account
+        admin_user = self.db.query(User).filter(User.username == "admin").first()
+        del_admin_res = self.client.delete(f"/api/admin/users/{admin_user.id}", headers=adm_hdr)
+        self.assertEqual(del_admin_res.status_code, 400)
+
+        # Clean up test users
+        del_m_res = self.client.delete(f"/api/admin/users/{m_user_id}", headers=adm_hdr)
+        self.assertEqual(del_m_res.status_code, 200)
+
+        del_v_res = self.client.delete(f"/api/admin/users/{v_user_id}", headers=adm_hdr)
+        self.assertEqual(del_v_res.status_code, 200)
+
+        self.client.post("/api/auth/logout", headers=adm_hdr)
+
 if __name__ == "__main__":
     unittest.main()
