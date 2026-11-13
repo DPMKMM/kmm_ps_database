@@ -6,6 +6,11 @@
   --accent: #f59e0b;
 }
 
+/* Utility override to ensure hidden elements with flex or grid are never rendered */
+.hidden {
+  display: none !important;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: #f1f5f9;

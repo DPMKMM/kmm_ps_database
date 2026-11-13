@@ -257,6 +257,11 @@ function showAuthenticatedUI() {
     roleBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950";
     sideMandal.textContent = "District Super Admin (All 20 Mandals)";
     document.querySelectorAll(".admin-only-section").forEach(el => el.classList.remove("hidden"));
+  } else if (currentUser.role === "DISTRICT_ADMIN") {
+    roleBadge.textContent = "DISTRICT ADMIN";
+    roleBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white";
+    sideMandal.textContent = "District Admin (Data Modification)";
+    document.querySelectorAll(".admin-only-section").forEach(el => el.classList.add("hidden"));
   } else if (currentUser.role === "MANDAL_ADMIN") {
     roleBadge.textContent = `MANDAL ADMIN (${currentUser.mandal_name || 'Assigned'})`;
     roleBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-teal-500 text-slate-950";
@@ -311,14 +316,17 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Val) badge2Val.textContent = currentUser.mandal_lgd || "-";
 
     // Nav adjustments: Remove Deputation Chains Graph in Mandal login & scope Reports label
-    if (navDeputationChains) navDeputationChains.classList.add("hidden");
+    if (navDeputationChains) {
+      navDeputationChains.classList.add("hidden");
+      navDeputationChains.style.setProperty("display", "none", "important");
+    }
     if (navDistrictReports) navDistrictReports.classList.remove("hidden");
     if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = `${currentUser.mandal_name} Reports (All)`;
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = `${currentUser.mandal_name} Mandal Position`;
     if (navGPMasterLabel) navGPMasterLabel.textContent = `${currentUser.mandal_name} GPs (${mandalGpsCount || '...' })`;
 
   } else {
-    // SUPER ADMIN / VIEWER: Full District View
+    // SUPER ADMIN / DISTRICT ADMIN / VIEWER: Full District View
     if (coverageSubtitle) {
       coverageSubtitle.textContent = "Covering all 571 Gram Panchayats & 20 Mandals";
     }
@@ -327,7 +335,10 @@ function updateHeaderAndNavScope(summary = null) {
     if (badge2Label) badge2Label.textContent = "Mandals";
     if (badge2Val) badge2Val.textContent = "20";
 
-    if (navDeputationChains) navDeputationChains.classList.remove("hidden");
+    if (navDeputationChains) {
+      navDeputationChains.classList.remove("hidden");
+      navDeputationChains.style.removeProperty("display");
+    }
     if (navDistrictReports) navDistrictReports.classList.remove("hidden");
     if (navDistrictReportsLabel) navDistrictReportsLabel.textContent = "District Reports (All A-Z)";
     if (navMandalReportsLabel) navMandalReportsLabel.textContent = "Mandal-wise Position";
@@ -3973,7 +3984,9 @@ async function openEditEmployeeModal(empId) {
     }
 
     const isMandal = currentUser && currentUser.role === "MANDAL_ADMIN";
-    const isAdmin = currentUser && currentUser.role === "SUPER_ADMIN";
+    const isSuperAdmin = currentUser && currentUser.role === "SUPER_ADMIN";
+    const isDistrictAdmin = currentUser && currentUser.role === "DISTRICT_ADMIN";
+    const isAdmin = isSuperAdmin || isDistrictAdmin;
     const curDesig = p.designation || "Panchayat Secretary Grade-IV";
 
     let desigOptions = EDIT_DESIGNATION_OPTIONS.includes(curDesig)
@@ -4205,7 +4218,7 @@ async function openEditEmployeeModal(empId) {
 
         <div class="flex justify-between items-center pt-3 border-t border-slate-200">
           <div>
-            ${(isAdmin || p.can_delete) ? `
+            ${(isSuperAdmin && p.can_delete) ? `
               <button type="button" onclick="handleDeleteEmployee('${escapeReportCell(p.employee_id)}', '${escapeReportCell(p.name_ifmis)}')" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded shadow flex items-center gap-1.5 text-xs transition">
                 <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Employee Record
               </button>
@@ -4308,7 +4321,7 @@ async function handleEditEmployeeSubmit(e, empId) {
     payload.new_employee_id = newEmpCode;
   }
 
-  if (currentUser && currentUser.role === "SUPER_ADMIN") {
+  if (currentUser && (currentUser.role === "SUPER_ADMIN" || currentUser.role === "DISTRICT_ADMIN")) {
     const regM = document.getElementById("edit-emp-reg-mandal").value;
     if (regM) payload.registration_mandal_id = parseInt(regM);
   }
@@ -6027,6 +6040,8 @@ function renderFilteredUsersTable(users) {
             let roleBadge = "";
             if (u.role === "SUPER_ADMIN") {
               roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950">SUPER ADMIN</span>`;
+            } else if (u.role === "DISTRICT_ADMIN") {
+              roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">DISTRICT ADMIN</span>`;
             } else if (u.role === "MANDAL_ADMIN") {
               roleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-govblue-100 text-govblue-900">MANDAL ADMIN</span>`;
             } else {
@@ -6098,8 +6113,9 @@ function openCreateUserModal() {
             <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">User Role <span class="text-rose-600">*</span></label>
             <select id="create-user-role" onchange="handleUserRoleChange('create')" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none focus:ring-1 focus:ring-govblue-800">
               <option value="MANDAL_ADMIN" selected>MANDAL_ADMIN (Mandal Level Officer)</option>
+              <option value="DISTRICT_ADMIN">DISTRICT_ADMIN (District Admin - Data Modification)</option>
               <option value="VIEWER">VIEWER (District Viewer - Read Only)</option>
-              <option value="SUPER_ADMIN">SUPER_ADMIN (District Super Admin)</option>
+              <option value="SUPER_ADMIN">SUPER_ADMIN (District Super Admin - Full Rights)</option>
             </select>
           </div>
           <div id="create-user-mandal-wrap" class="md:col-span-2">
@@ -6238,7 +6254,8 @@ function openEditUserModal(userId) {
           <div>
             <label class="block font-bold text-slate-700 uppercase mb-1 text-[10px]">Role</label>
             <select id="edit-user-role" ${isSelf ? "disabled" : ""} onchange="handleUserRoleChange('edit')" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold outline-none focus:ring-1 focus:ring-govblue-800 disabled:bg-slate-100 disabled:text-slate-500">
-              <option value="SUPER_ADMIN" ${user.role === "SUPER_ADMIN" ? "selected" : ""}>SUPER_ADMIN (District Super Admin)</option>
+              <option value="SUPER_ADMIN" ${user.role === "SUPER_ADMIN" ? "selected" : ""}>SUPER_ADMIN (District Super Admin - Full Rights)</option>
+              <option value="DISTRICT_ADMIN" ${user.role === "DISTRICT_ADMIN" ? "selected" : ""}>DISTRICT_ADMIN (District Admin - Data Modification)</option>
               <option value="MANDAL_ADMIN" ${user.role === "MANDAL_ADMIN" ? "selected" : ""}>MANDAL_ADMIN (Mandal Level Officer)</option>
               <option value="VIEWER" ${user.role === "VIEWER" ? "selected" : ""}>VIEWER (District Viewer - Read Only)</option>
             </select>

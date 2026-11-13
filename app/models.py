@@ -12,7 +12,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     display_name = Column(String(100), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)  # SUPER_ADMIN, MANDAL_ADMIN, VIEWER
+    role = Column(String(20), nullable=False)  # SUPER_ADMIN, DISTRICT_ADMIN, MANDAL_ADMIN, VIEWER
     mandal_id = Column(Integer, ForeignKey("mandals.id"), nullable=True)
     mandal_lgd = Column(Integer, nullable=True)
     failed_attempts = Column(Integer, default=0)

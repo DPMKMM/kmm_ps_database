@@ -109,7 +109,13 @@ def take_verification_action(
     if not verif:
         raise HTTPException(status_code=404, detail="Verification entry not found")
         
-    # Check permission: Only the receiving Mandal admin OR District Super Admin can verify incoming deputation
+    if current_user.role == "VIEWER":
+        raise HTTPException(
+            status_code=403,
+            detail="Read-only access: District Viewer cannot verify deputations."
+        )
+
+    # Check permission: Only the receiving Mandal admin OR District Admins can verify incoming deputation
     if current_user.role == "MANDAL_ADMIN":
         if verif.receiving_mandal_id != current_user.mandal_id:
             raise HTTPException(

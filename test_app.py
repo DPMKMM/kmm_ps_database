@@ -1056,5 +1056,103 @@ class TestKhammamPSApplication(unittest.TestCase):
 
         self.client.post("/api/auth/logout", headers=adm_hdr)
 
+    def test_17_district_admin_role_permissions(self):
+        """
+        Verify:
+        1. DISTRICT_ADMIN can login and has district-wide data modification rights.
+        2. DISTRICT_ADMIN can register and modify employee records across any Mandal.
+        3. DISTRICT_ADMIN can view Deputation Chains Graph (200 OK).
+        4. DISTRICT_ADMIN is strictly prohibited from User Management (HTTP 403).
+        5. DISTRICT_ADMIN is strictly prohibited from deleting employee records (HTTP 403).
+        6. SUPER_ADMIN retains all rights including employee deletion and user management.
+        """
+        # 1. Login as default seeded district_admin or create one
+        da_login = self.client.post("/api/auth/login", json={
+            "username": "district_admin", "password": "DistAdmin@Khammam2026", "device_info": "District Admin Test"
+        })
+        if da_login.status_code != 200:
+            # If not yet seeded in test db, create via super admin
+            adm_login = self.client.post("/api/auth/login", json={"username": "admin", "password": "Admin@Khammam2026"})
+            adm_hdr = {"Authorization": f"Bearer {adm_login.json()['access_token']}"}
+            self.client.post("/api/admin/users", headers=adm_hdr, json={
+                "username": "district_admin",
+                "password": "DistAdmin@Khammam2026",
+                "display_name": "District Administrator (DPO)",
+                "role": "DISTRICT_ADMIN"
+            })
+            self.client.post("/api/auth/logout", headers=adm_hdr)
+            da_login = self.client.post("/api/auth/login", json={
+                "username": "district_admin", "password": "DistAdmin@Khammam2026", "device_info": "District Admin Test"
+            })
+
+        self.assertEqual(da_login.status_code, 200)
+        self.assertEqual(da_login.json()["role"], "DISTRICT_ADMIN")
+        da_hdr = {"Authorization": f"Bearer {da_login.json()['access_token']}"}
+
+        # 2. Verify DISTRICT_ADMIN can access Deputation Chains Graph
+        chains_res = self.client.get("/api/deputations/chains", headers=da_hdr)
+        self.assertEqual(chains_res.status_code, 200)
+
+        # 3. Verify DISTRICT_ADMIN cannot access User Management (403 Forbidden)
+        self.assertEqual(self.client.get("/api/admin/users", headers=da_hdr).status_code, 403)
+        self.assertEqual(self.client.post("/api/admin/users", headers=da_hdr, json={
+            "username": "illegal_user", "password": "Password@123", "role": "VIEWER"
+        }).status_code, 403)
+
+        # 4. Verify DISTRICT_ADMIN can register and modify employee across Mandals
+        e_mandal = self.db.query(Mandal).filter(Mandal.mandal_name.ilike("%enkoor%")).first()
+        e_gp = self.db.query(GramPanchayat).filter(GramPanchayat.mandal_id == e_mandal.id).first()
+
+        emp_res = self.client.post("/api/employees/stage1-register", headers=da_hdr, json={
+            "employee_id": "DIST-ADMIN-EMP-01",
+            "name_ifmis": "District Admin Created PS",
+            "mobile_number": "9777777777",
+            "designation": "Panchayat Secretary Grade-II",
+            "dob": "1991-03-20",
+            "registration_mandal_id": e_mandal.id
+        })
+        self.assertEqual(emp_res.status_code, 201)
+
+        # Map salary GP
+        map_res = self.client.post("/api/employees/stage2-combined-mapping", headers=da_hdr, json={
+            "employee_id": "DIST-ADMIN-EMP-01",
+            "salary_gp_lgd": e_gp.lgd_code,
+            "salary_claiming_status": "YES",
+            "working_from_date": "2026-01-01",
+            "service_status": "WORKING",
+            "is_working_in_salary_gp": True,
+            "posting_type": "OWN_GP",
+            "actual_working_gp_lgd": e_gp.lgd_code
+        })
+        self.assertEqual(map_res.status_code, 200)
+
+        # Update employee data
+        upd_res = self.client.put("/api/employees/DIST-ADMIN-EMP-01", headers=da_hdr, json={
+            "name_ifmis": "District Admin Modified PS",
+            "mobile_number": "9888888888"
+        })
+        self.assertEqual(upd_res.status_code, 200)
+        self.assertEqual(upd_res.json()["employee_id"], "DIST-ADMIN-EMP-01")
+
+        # Verify changes via GET
+        get_res = self.client.get("/api/employees/DIST-ADMIN-EMP-01", headers=da_hdr)
+        self.assertEqual(get_res.status_code, 200)
+        self.assertEqual(get_res.json()["name_ifmis"], "District Admin Modified PS")
+        self.assertEqual(get_res.json()["mobile_number"], "9888888888")
+
+        # 5. Verify DISTRICT_ADMIN CANNOT delete employee record (403 Forbidden)
+        del_da_res = self.client.delete("/api/employees/DIST-ADMIN-EMP-01", headers=da_hdr)
+        self.assertEqual(del_da_res.status_code, 403)
+        self.assertIn("District Super Admin", del_da_res.json()["detail"])
+
+        self.client.post("/api/auth/logout", headers=da_hdr)
+
+        # 6. Verify SUPER_ADMIN CAN delete employee record
+        adm_login = self.client.post("/api/auth/login", json={"username": "admin", "password": "Admin@Khammam2026"})
+        adm_hdr = {"Authorization": f"Bearer {adm_login.json()['access_token']}"}
+        del_adm_res = self.client.delete("/api/employees/DIST-ADMIN-EMP-01", headers=adm_hdr)
+        self.assertEqual(del_adm_res.status_code, 200)
+        self.client.post("/api/auth/logout", headers=adm_hdr)
+
 if __name__ == "__main__":
     unittest.main()

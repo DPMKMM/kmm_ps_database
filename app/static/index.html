@@ -44,7 +44,7 @@
   <script>
     const isSubpath = window.location.pathname.startsWith('/ps-data') ? '/ps-data' : (window.location.pathname.startsWith('/psdata') ? '/psdata' : '');
     const assetBase = isSubpath;
-    document.write('<link rel="stylesheet" href="' + assetBase + '/static/css/custom.css">');
+    document.write('<link rel="stylesheet" href="' + assetBase + '/static/css/custom.css?v=20261113_03">');
   </script>
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased flex flex-col min-h-screen">
@@ -343,7 +343,7 @@
   <!-- APPLICATION SCRIPTS -->
   <script>
     const appBase = window.location.pathname.startsWith('/ps-data') ? '/ps-data' : (window.location.pathname.startsWith('/psdata') ? '/psdata' : '');
-    document.write('<script src="' + appBase + '/static/js/app.js"><\/script>');
+    document.write('<script src="' + appBase + '/static/js/app.js?v=20261113_03"><\/script>');
   </script>
 
 </body>

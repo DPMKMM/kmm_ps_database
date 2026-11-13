@@ -33,7 +33,7 @@ class UserCreateRequest(BaseModel):
     username: str
     password: str
     display_name: Optional[str] = None
-    role: str = "MANDAL_ADMIN"  # SUPER_ADMIN, MANDAL_ADMIN, VIEWER
+    role: str = "MANDAL_ADMIN"  # SUPER_ADMIN, DISTRICT_ADMIN, MANDAL_ADMIN, VIEWER
     mandal_id: Optional[int] = None
     is_active: bool = True
     must_change_password: bool = False

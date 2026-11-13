@@ -311,7 +311,7 @@ def enforce_mandal_isolation(current_user: User, mandal_id: int):
     A Mandal user must never access, edit or delete another Mandal's records.
     Enforce this restriction at the backend and database query level.
     """
-    if current_user.role == "SUPER_ADMIN":
+    if current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN"):
         return
     if current_user.role == "MANDAL_ADMIN":
         if current_user.mandal_id != mandal_id:
@@ -336,7 +336,7 @@ def enforce_employee_mandal_scope(
     Ensure a MANDAL_ADMIN can only access employees registered, claiming salary,
     or currently working/officially deputed in their concerned Mandal.
     """
-    if current_user.role == "SUPER_ADMIN":
+    if current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN"):
         return
     if current_user.role == "VIEWER":
         if allow_viewer:

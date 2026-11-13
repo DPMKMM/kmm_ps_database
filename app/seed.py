@@ -118,6 +118,20 @@ def seed_database(force_reseed: bool = False):
             db.add(viewer_user)
             print("Created District Viewer account: viewer / Viewer@Khammam2026")
 
+        # District Admin (Full Data Modification across all Mandals, no user management / no employee deletion)
+        dist_admin_user = db.query(User).filter(User.username == "district_admin").first()
+        if not dist_admin_user:
+            dist_admin_user = User(
+                username="district_admin",
+                display_name="District Administrator (DPO Data Modification)",
+                password_hash=hash_password("DistAdmin@Khammam2026"),
+                role="DISTRICT_ADMIN",
+                is_active=True,
+                must_change_password=False
+            )
+            db.add(dist_admin_user)
+            print("Created District Admin account: district_admin / DistAdmin@Khammam2026")
+
         # 20 Mandal Admin Accounts
         for m_lgd, m_name in mandals_dict.items():
             m_obj = mandal_obj_map[m_lgd]

@@ -115,6 +115,11 @@ def create_employee(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role == "VIEWER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Read-only access: District Viewer cannot register employees."
+        )
     emp_id = payload.employee_id.strip()
     
     # 1. Global Employee ID Duplicate Validation
@@ -320,7 +325,7 @@ def _can_edit_employee(
     salary_map: Optional[EmployeeSalaryMapping]
 ) -> bool:
     """Return True if current user may modify this employee's master, salary, status, or posting."""
-    if current_user.role == "SUPER_ADMIN":
+    if current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN"):
         return True
     if current_user.role == "MANDAL_ADMIN":
         if salary_map:
@@ -333,14 +338,8 @@ def _can_delete_employee(
     emp: Employee,
     salary_map: Optional[EmployeeSalaryMapping]
 ) -> bool:
-    """Return True if current user may delete this employee record."""
-    if current_user.role == "SUPER_ADMIN":
-        return True
-    if current_user.role == "MANDAL_ADMIN":
-        if salary_map:
-            return salary_map.salary_mandal_id == current_user.mandal_id
-        return emp.registration_mandal_id == current_user.mandal_id
-    return False
+    """Return True if current user may delete this employee record. Strictly District Super Admin only."""
+    return current_user.role == "SUPER_ADMIN"
 
 
 @router.get("")
@@ -443,7 +442,7 @@ def list_employees(
             working_district_str = "Khammam"
 
         # Privacy protection: Only Super Admin and the employee's own salary Mandal user can see exact DOB
-        can_view_dob = (current_user.role == "SUPER_ADMIN" or (current_user.role == "MANDAL_ADMIN" and current_user.mandal_id == sm.salary_mandal_id))
+        can_view_dob = (current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN") or (current_user.role == "MANDAL_ADMIN" and current_user.mandal_id == sm.salary_mandal_id))
         
         results.append({
             "employee_id": emp.employee_id,
@@ -513,7 +512,7 @@ def list_stage1_employees(
         sm = db.query(EmployeeSalaryMapping).filter(EmployeeSalaryMapping.employee_id == e.employee_id, EmployeeSalaryMapping.is_active == True).first()
         p = db.query(EmployeePosting).filter(EmployeePosting.employee_id == e.employee_id, EmployeePosting.is_current == True).first()
         can_view_dob = (
-            current_user.role == "SUPER_ADMIN"
+            current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN")
             or (current_user.role == "MANDAL_ADMIN" and (
                 e.registration_mandal_id == current_user.mandal_id
                 or (sm and sm.salary_mandal_id == current_user.mandal_id)
@@ -598,7 +597,7 @@ def get_employee_profile(
     current_status = next((s for s in statuses if s.is_current), None)
     
     can_view_dob = (
-        current_user.role == "SUPER_ADMIN"
+        current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN")
         or (current_user.role == "MANDAL_ADMIN" and (
             emp.registration_mandal_id == current_user.mandal_id
             or (salary_map and current_user.mandal_id == salary_map.salary_mandal_id)
@@ -747,7 +746,7 @@ def update_employee(
             )
 
         reg_m_id = emp.registration_mandal_id
-        if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN":
+        if payload.registration_mandal_id and current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN"):
             reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
             if not reg_m:
                 raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
@@ -817,7 +816,7 @@ def update_employee(
         if "dob" in payload.model_fields_set and payload.dob != emp.dob:
             emp.dob = payload.dob
             basic_changed = True
-        if payload.registration_mandal_id and current_user.role == "SUPER_ADMIN" and payload.registration_mandal_id != emp.registration_mandal_id:
+        if payload.registration_mandal_id and current_user.role in ("SUPER_ADMIN", "DISTRICT_ADMIN") and payload.registration_mandal_id != emp.registration_mandal_id:
             reg_m = db.query(Mandal).filter(Mandal.id == payload.registration_mandal_id).first()
             if not reg_m:
                 raise HTTPException(status_code=400, detail="Invalid Registration Mandal ID")
@@ -1168,6 +1167,11 @@ def stage1_register_employee(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role == "VIEWER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Read-only access: District Viewer cannot register employees."
+        )
     emp_id = payload.employee_id.strip()
     
     # 1. Immediate Global Duplicate Check across all 20 Mandals

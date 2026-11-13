@@ -70,8 +70,8 @@ def create_user(
             detail=f"User with username '{username}' already exists."
         )
 
-    if payload.role not in ("SUPER_ADMIN", "MANDAL_ADMIN", "VIEWER"):
-        raise HTTPException(status_code=400, detail="Invalid user role. Must be SUPER_ADMIN, MANDAL_ADMIN, or VIEWER.")
+    if payload.role not in ("SUPER_ADMIN", "DISTRICT_ADMIN", "MANDAL_ADMIN", "VIEWER"):
+        raise HTTPException(status_code=400, detail="Invalid user role. Must be SUPER_ADMIN, DISTRICT_ADMIN, MANDAL_ADMIN, or VIEWER.")
 
     mandal = None
     mandal_id = None
@@ -97,6 +97,8 @@ def create_user(
             disp_name = f"{mandal.mandal_name} Mandal Admin"
         elif payload.role == "SUPER_ADMIN":
             disp_name = "District Super Admin"
+        elif payload.role == "DISTRICT_ADMIN":
+            disp_name = "District Administrator (DPO)"
         else:
             disp_name = "District Viewer"
 
@@ -156,7 +158,7 @@ def update_user(
             raise HTTPException(status_code=400, detail="You cannot demote your own logged-in admin account.")
 
     if payload.role:
-        if payload.role not in ("SUPER_ADMIN", "MANDAL_ADMIN", "VIEWER"):
+        if payload.role not in ("SUPER_ADMIN", "DISTRICT_ADMIN", "MANDAL_ADMIN", "VIEWER"):
             raise HTTPException(status_code=400, detail="Invalid user role.")
         user.role = payload.role
 
